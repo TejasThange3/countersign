@@ -250,9 +250,14 @@ You only see the car after it has passed all four.
 - **Loop 3:** the reviewer subagent reviews with fresh context. Then the agent commits and runs
   `python scripts/codex_review.py --task tasks/<lane>.md`. This calls `codex exec` with
   `--sandbox read-only` (Codex can read and run read-only commands but can't edit) and
-  `--output-last-message` to save the review to `reviews/<branch>-r<N>.md`. The review must end
-  with `VERDICT: PASS` or `VERDICT: FAIL`. The script exits 0 for PASS and 1 for FAIL (so the
-  agent knows it must fix), or 2 if Codex couldn't run. At most 3 Codex rounds.
+  `--output-schema scripts/codex_review_schema.json`. A **JSON schema** is a strict template
+  for the answer, so Codex must return `{verdict, must_fix[], nice_to_have[], summary}` and
+  can't drift into free text. (It did drift on the first test, which is why the schema was added.)
+  The script derives the verdict from the findings (any MUST FIX means FAIL) and writes
+  `reviews/<branch>-r<N>.md`. It exits 0 for PASS and 1 for FAIL (so the agent knows it must
+  fix), or 2 if Codex couldn't run. At most 3 Codex rounds.
+  Tested on a planted-bug branch: Codex flagged the missing cap, a hardcoded key, and the
+  missing tests, all as MUST FIX, and the script exited 1.
   Using a different model family as reviewer matters because models tend to miss their own kind
   of mistakes.
 - **Loop 4** is manual but cheap: one line in AGENTS.md, read by every future agent.
