@@ -1,0 +1,33 @@
+{
+  "armoriq_mode": "live",
+  "sdk_version": "0.6.10",
+  "recorded_at": "20261014T150357Z",
+  "credential": "api_key",
+  "approver_email": "<manager>",
+  "decisions": [
+    {
+      "decision": "approve",
+      "status_code": 403,
+      "ok": false,
+      "body": {
+        "message": "Amount 250 exceeds your approval limit of 0",
+        "error": "Forbidden",
+        "statusCode": 403
+      }
+    }
+  ],
+  "records": [
+    {
+      "tool": "issue_refund",
+      "user_email": "<guest>",
+      "decision": "hold",
+      "outcome": "timeout",
+      "plan_id": "a9a1b03b-ea33-4e85-94e4-5ff44b5c357b",
+      "delegation_id": "b6bab8e7-e543-46ab-9e56-b8a30c02cd28",
+      "approval": "timeout",
+      "reason": "rule_action_hold",
+      "matched_policy": "countersign-smoke",
+      "result": null
+    }
+  ]
+}

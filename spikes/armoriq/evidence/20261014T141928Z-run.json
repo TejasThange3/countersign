@@ -1,0 +1,55 @@
+{
+  "armoriq_mode": "live",
+  "sdk_version": "0.6.10",
+  "recorded_at": "20261014T141928Z",
+  "records": [
+    {
+      "expected": "ALLOW",
+      "tool": "get_hotel_info",
+      "user_email": "<guest>",
+      "decision": "allow",
+      "outcome": "ran",
+      "plan_id": "2fbbae05-af76-4b67-82b6-f28f21f207dc",
+      "delegation_id": null,
+      "approval": null,
+      "reason": "enforcement_passed",
+      "matched_policy": "countersign-smoke",
+      "result": {
+        "name": "The Larkspur (synthetic)",
+        "check_in": "15:00",
+        "check_out": "11:00"
+      }
+    },
+    {
+      "expected": "HOLD",
+      "tool": "issue_refund",
+      "user_email": "<guest>",
+      "decision": "hold",
+      "outcome": "ran",
+      "plan_id": "0242f721-2388-4a74-8a7e-b052f76d644c",
+      "delegation_id": "bcaa0f3b-d937-4e15-a6a5-d5d464269576",
+      "approval": "approved",
+      "reason": "rule_action_hold",
+      "matched_policy": "countersign-smoke",
+      "result": {
+        "refund_id": "rf-b-1001",
+        "booking_id": "b-1001",
+        "amount": 250.0,
+        "reason": "smoke test"
+      }
+    },
+    {
+      "expected": "BLOCK",
+      "tool": "export_guest_list",
+      "user_email": "<guest>",
+      "decision": "hold",
+      "outcome": "timeout",
+      "plan_id": "7af14724-a608-432c-ba92-5affcdcf8651",
+      "delegation_id": "e6182369-995c-4724-97cf-2839f5c6ae70",
+      "approval": "timeout",
+      "reason": "rule_action_hold",
+      "matched_policy": "countersign-smoke",
+      "result": null
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "armoriq_mode": "live",
+  "sdk_version": "0.6.10",
+  "recorded_at": "20261014T162933Z",
+  "credential": "api_key",
+  "approver_email": "<admin>",
+  "declared_roles": [
+    {
+      "role": "org_admin",
+      "limit": 1000000000.0
+    }
+  ],
+  "decisions": [
+    {
+      "decision": "approve",
+      "status_code": 201,
+      "ok": true,
+      "body": {
+        "delegationId": "9ad96ad4-e3ea-4399-85fa-c1609994bca6",
+        "status": "approved",
+        "approvedAt": "2026-10-14T16:29:23.586Z",
+        "approverEmail": "<admin>",
+        "delegationToken": "<redacted>",
+        "merkleRoot": "f331d88c2f2e5d509e5f03d97046ff2dd88e4779ca21a6bd205f03de026c9473",
+        "message": "Delegation approved. The original requester can now execute the tool."
+      }
+    }
+  ],
+  "records": [
+    {
+      "tool": "issue_refund",
+      "user_email": "<guest>",
+      "decision": "hold",
+      "outcome": "ran",
+      "plan_id": "8b07d0d4-4133-4bca-bb6d-a5f4a456a582",
+      "delegation_id": "9ad96ad4-e3ea-4399-85fa-c1609994bca6",
+      "approval": "approved",
+      "reason": "rule_action_hold",
+      "matched_policy": "countersign-smoke",
+      "result": {
+        "refund_id": "rf-b-1001",
+        "booking_id": "b-1001",
+        "amount": 250.0,
+        "reason": "smoke test"
+      }
+    }
+  ]
+}

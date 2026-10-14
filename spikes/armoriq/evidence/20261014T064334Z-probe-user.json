@@ -1,0 +1,19 @@
+{
+  "armoriq_mode": "live",
+  "sdk_version": "0.6.10",
+  "recorded_at": "20261014T064334Z",
+  "records": [
+    {
+      "tool": "get_hotel_info",
+      "user_email": "<guest>",
+      "decision": "block",
+      "outcome": "blocked",
+      "plan_id": "27eb8acf-0bf7-4fee-882d-6f8daf17b4c3",
+      "delegation_id": null,
+      "approval": null,
+      "reason": "no_matching_policy",
+      "matched_policy": null,
+      "result": null
+    }
+  ]
+}

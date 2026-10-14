@@ -1,0 +1,34 @@
+{
+  "armoriq_mode": "live",
+  "sdk_version": "0.6.10",
+  "recorded_at": "20261014T150126Z",
+  "credential": "api_key",
+  "decisions": [
+    {
+      "decision": "approve",
+      "status_code": 400,
+      "ok": false,
+      "body": {
+        "message": [
+          "approverEmail must be a valid email address"
+        ],
+        "error": "Bad Request",
+        "statusCode": 400
+      }
+    }
+  ],
+  "records": [
+    {
+      "tool": "issue_refund",
+      "user_email": "<guest>",
+      "decision": "hold",
+      "outcome": "timeout",
+      "plan_id": "a60683b6-8c8a-49b3-85f6-fe0abfb1a298",
+      "delegation_id": "4bf1a4ae-bfd4-412e-a840-ea144372ae0b",
+      "approval": "timeout",
+      "reason": "rule_action_hold",
+      "matched_policy": "countersign-smoke",
+      "result": null
+    }
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "armoriq_mode": "live",
+  "sdk_version": "0.6.10",
+  "recorded_at": "20261014T064322Z",
+  "bootstrap": {
+    "org": {
+      "orgId": "6df96aee-6df0-444a-a305-3b3f889fb6f7",
+      "name": "<org>",
+      "domain": null
+    },
+    "agent": {
+      "agentId": null,
+      "name": null
+    },
+    "agents": [],
+    "mcps": [],
+    "toolMap": {}
+  },
+  "resolve_user": {
+    "unverified": {
+      "user": {
+        "email": "<unverified>",
+        "membershipId": null,
+        "userId": null,
+        "role": null,
+        "level": null,
+        "isMember": false
+      },
+      "policies": [],
+      "approverChain": []
+    },
+    "guest": {
+      "user": {
+        "email": "<guest>",
+        "membershipId": null,
+        "userId": null,
+        "role": null,
+        "level": null,
+        "isMember": false
+      },
+      "policies": [],
+      "approverChain": []
+    },
+    "manager": {
+      "user": {
+        "email": "<manager>",
+        "membershipId": null,
+        "userId": null,
+        "role": null,
+        "level": null,
+        "isMember": false
+      },
+      "policies": [],
+      "approverChain": []
+    }
+  }
+}

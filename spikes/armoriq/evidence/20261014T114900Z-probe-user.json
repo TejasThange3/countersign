@@ -1,0 +1,23 @@
+{
+  "armoriq_mode": "live",
+  "sdk_version": "0.6.10",
+  "recorded_at": "20261014T114900Z",
+  "records": [
+    {
+      "tool": "get_hotel_info",
+      "user_email": "<guest>",
+      "decision": "allow",
+      "outcome": "ran",
+      "plan_id": "6895f789-8a87-4c8f-9887-14667b00ee97",
+      "delegation_id": null,
+      "approval": null,
+      "reason": "enforcement_passed",
+      "matched_policy": "countersign-smoke",
+      "result": {
+        "name": "The Larkspur (synthetic)",
+        "check_in": "15:00",
+        "check_out": "11:00"
+      }
+    }
+  ]
+}

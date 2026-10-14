@@ -1,0 +1,26 @@
+{
+  "armoriq_mode": "live",
+  "sdk_version": "0.6.10",
+  "recorded_at": "20261014T152400Z",
+  "delegation_id": "4bf1a4ae-bfd4-412e-a840-ea144372ae0b",
+  "approver_email": "<admin>",
+  "declared_roles": [
+    {
+      "role": "org_admin",
+      "limit": 1000000000.0
+    }
+  ],
+  "decisions": [
+    {
+      "decision": "reject",
+      "status_code": 201,
+      "ok": true,
+      "body": {
+        "delegationId": "4bf1a4ae-bfd4-412e-a840-ea144372ae0b",
+        "status": "rejected",
+        "rejectedAt": "2026-10-14T15:23:58.896Z",
+        "rejectionReason": "Rejected by approver"
+      }
+    }
+  ]
+}

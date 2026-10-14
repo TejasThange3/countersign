@@ -1,0 +1,19 @@
+{
+  "armoriq_mode": "live",
+  "sdk_version": "0.6.10",
+  "recorded_at": "20261014T114949Z",
+  "records": [
+    {
+      "tool": "ghost_tool",
+      "user_email": "<guest>",
+      "decision": "block",
+      "outcome": "blocked",
+      "plan_id": "ed756a1f-b242-479b-b32f-be57deeacd78",
+      "delegation_id": null,
+      "approval": null,
+      "reason": "no_matching_policy",
+      "matched_policy": null,
+      "result": null
+    }
+  ]
+}

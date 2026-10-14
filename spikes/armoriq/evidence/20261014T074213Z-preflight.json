@@ -1,0 +1,78 @@
+{
+  "armoriq_mode": "live",
+  "sdk_version": "0.6.10",
+  "recorded_at": "20261014T074213Z",
+  "bootstrap": {
+    "org": {
+      "orgId": "6df96aee-6df0-444a-a305-3b3f889fb6f7",
+      "name": "<org>",
+      "domain": null
+    },
+    "agent": {
+      "agentId": "a98e6eff-a952-4487-9830-60d0e579c295",
+      "name": "countersign"
+    },
+    "agents": [
+      {
+        "agentId": "a98e6eff-a952-4487-9830-60d0e579c295",
+        "name": "countersign"
+      }
+    ],
+    "mcps": [
+      {
+        "name": "hotel-mcp",
+        "mcpId": "d3510215-b6c8-45b3-9e9b-785c3c6d2896",
+        "tools": [
+          "issue_refund",
+          "get_hotel_info",
+          "export_guest_list",
+          "spike_uncovered_probe"
+        ]
+      }
+    ],
+    "toolMap": {
+      "issue_refund": "hotel-mcp",
+      "get_hotel_info": "hotel-mcp",
+      "export_guest_list": "hotel-mcp",
+      "spike_uncovered_probe": "hotel-mcp"
+    }
+  },
+  "resolve_user": {
+    "unverified": {
+      "user": {
+        "email": "<unverified>",
+        "membershipId": null,
+        "userId": null,
+        "role": null,
+        "level": null,
+        "isMember": false
+      },
+      "policies": [],
+      "approverChain": []
+    },
+    "guest": {
+      "user": {
+        "email": "<guest>",
+        "membershipId": null,
+        "userId": null,
+        "role": null,
+        "level": null,
+        "isMember": false
+      },
+      "policies": [],
+      "approverChain": []
+    },
+    "manager": {
+      "user": {
+        "email": "<manager>",
+        "membershipId": null,
+        "userId": null,
+        "role": null,
+        "level": null,
+        "isMember": false
+      },
+      "policies": [],
+      "approverChain": []
+    }
+  }
+}
