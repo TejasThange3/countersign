@@ -34,3 +34,6 @@ evals/reports/**/*.mp3
 Thumbs.db
 .idea/
 .vscode/
+
+# Private security notes (reported privately to ArmorIQ, never published)
+docs/research/PRIVATE-*.md

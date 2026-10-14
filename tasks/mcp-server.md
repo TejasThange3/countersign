@@ -36,3 +36,12 @@ DONE MEANS:
 - notes-drafts/mcp-server.md written in the AGENTS.md notes format.
 
 Start by showing me your plan before editing.
+
+## Update from main (Oct 14, from the armoriq-smoke lane)
+
+- ArmorIQ's optional security scan fails on a bearer-protected server: the scanner sends no
+  token. Keep auth on every request; we accept "Unscanned" (it is optional). Do not open
+  initialize/tools/list without auth.
+- The server must refuse to start with an empty MCP_BEARER_TOKEN (an empty token silently
+  disabled auth on the toy server).
+- ArmorIQ never calls the MCP URL while enforcing in sdk mode; only the bridge does.

@@ -55,7 +55,7 @@ ArmorIQ does not supply your business tools. It is the enforcement and audit lay
 - The model: only proposes. It never has the final say on an action, and never chooses whose data a tool acts on.
 
 **No Pipecat adapter exists, so we build one.**
-ArmorIQ ships adapters for Google ADK, LangChain, Strands (Python and TypeScript) and CrewAI (Python). There is no adapter for Pipecat or any voice framework. Countersign includes a small ArmorIQ-to-Pipecat bridge built on the core Python SDK (`capture_plan`, `get_intent_token`, `invoke`, and `for_user` sessions for holds and approvals). This is a genuine, reusable contribution and a strong talking point.
+ArmorIQ ships adapters for Google ADK, LangChain, Strands (Python and TypeScript) and CrewAI (Python). There is no adapter for Pipecat or any voice framework. Countersign includes a small ArmorIQ-to-Pipecat bridge built on the core Python SDK in **sdk mode**, the same order the official Strands adapter uses: `for_user(email).start_session()`, `start_plan(tool_calls, goal)` (plan + intent token), `session.check(...)` (ALLOW / HOLD / BLOCK from `/iap/sdk/enforce`), the bridge calls `hotel-mcp` itself, then `session.report(...)`. Holds wait via the delegation status endpoint, offloaded with `asyncio.to_thread` because the SDK's polling calls are synchronous and would otherwise freeze the voice pipeline. Proven live on Day 1 (`spikes/armoriq/`, `docs/research/armoriq-call-sequence.md`). This is a genuine, reusable contribution and a strong talking point.
 
 The bridge mirrors the lifecycle the official adapters use, so it behaves the same way they do:
 - After the LLM chooses tool calls: describe them as a plan and get it signed (or extend the existing plan; ArmorIQ records plan growth as a signed delta on one token per call session).
@@ -105,8 +105,9 @@ Unit tests use mocked ArmorIQ responses. Reported numbers never do. Every eval r
  |                                                                          |
  |  Tool calls -> ArmorIQ bridge (core Python SDK)                          |
  |                 identity mapping + guest-id injection                    |
- |                 capture_plan -> intent token -> for_user session         |
- |                 -> invoke -> ALLOW / HOLD (wait for approval) / BLOCK    |
+ |                 for_user session -> start_plan (intent token)            |
+ |                 -> check -> ALLOW / HOLD (wait for approval) / BLOCK     |
+ |                 -> bridge calls hotel-mcp -> report                      |
  |                 -> execution report                                      |
  |                                                                          |
  |  Events (transcripts, tool calls, decisions, latency) -> Redis pub/sub   |
@@ -155,6 +156,15 @@ Seed data (all synthetic, no real people): about 30 guests, 50 bookings, room in
 | velocity limit (if available; ArmorPay docs mention velocity limits) | `voice-guest` | hold | repeated small refunds that add up past the limit |
 
 Default behaviour: the docs disagree. The ADK cookbook says unmatched calls are refused with `no_matching_policy`; the Policy Enforcement page says unmatched calls are allowed by default. Do not rely on either. Every tool must be covered by an explicit allow, hold or block rule for every identity, and the Day 1 smoke test must confirm what an uncovered tool actually does. Start with one permissive policy, confirm it fires, then add the rest.
+
+### Day 1 findings that constrain the design (live-tested Oct 14)
+
+- **Org quotas:** 2 policies, 5 members, 2 MCP servers, 4 agents. One policy holds all rules; the MCP slot named `hotel-mcp` is reused (only its URL changes).
+- **Unmatched calls are blocked:** Settings -> Policy Engine "When no policy matches: Block (default-deny)", confirmed live (`no_matching_policy`). In the policy editor, untouched tools default to **Hold**, so set every tool explicitly.
+- **Non-members are governed** under the policy's "clients" rule; per-identity "member" rules need invited members. Separate unverified/guest policies therefore cost member slots (open decision for Day 2).
+- **ArmorIQ never calls the MCP URL while enforcing** in sdk mode (only at registration, discovery and scan).
+- **Programmatic approval works** with the API key + `X-User-Email` of a real approver, sending the role and limit read from `GET /delegation/my-role`. Approver credentials stay in local `.env`, never CI.
+- **Console caveat:** sdk-mode plans show as "csrg" / "No policy fired"; our evidence JSON records the real decision.
 
 ### Approvals
 
@@ -231,7 +241,7 @@ Check the size of the organizer's credit grant on Day 1 and plan the number of a
 - `pipecat-ai` (with ElevenLabs, Google, Silero and WebRTC extras): realtime pipeline, VAD, turn detection, function calling, metrics, OpenTelemetry tracing
 - ElevenLabs Scribe (realtime STT) and ElevenLabs Flash (streaming TTS). Fallbacks if a Pipecat service gives trouble: local faster-whisper on the RTX 4060 (free), or Deepgram on its free signup credit
 - LLM: a current Gemini Flash model via Pipecat's Google service (fast tool calling; free tier). Watch rate limits during eval runs: pace runs and retry with backoff rather than adding a paid fallback model
-- `armoriq-sdk` (Python): the bridge (`for_user`, `capture_plan`, `get_intent_token`, `invoke`), with `ARMORIQ_API_KEY` from platform.armoriq.ai
+- `armoriq-sdk` (Python): the bridge in sdk mode (`for_user`, `start_session`, `start_plan`, `check`, `report`; delegation approve/reject over HTTP), with `ARMORIQ_API_KEY` from platform.armoriq.ai
 - `fastmcp` client: discover tools via `tools/list` and convert schemas into Pipecat function definitions, with identity arguments removed from the schema the model sees (the bridge injects them). Execution goes only through the ArmorIQ bridge, never directly
 - `fastapi` + `uvicorn`: SmallWebRTC offer endpoint, WebSocket endpoint for the simulator, SSE endpoint for the dashboard
 - `redis` (redis-py asyncio): event bus between bot sessions and the API, plus session state

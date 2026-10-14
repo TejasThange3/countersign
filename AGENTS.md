@@ -145,4 +145,11 @@ folds drafts in when merging a lane. Keep the glossary at the end of `notes.md` 
 
 Add one line every time an agent gets something wrong that a rule would have prevented.
 
-- (none yet)
+- Before claiming an SDK path doesn't exist, grep for every call style (direct call, attribute
+  access, passed to `asyncio.to_thread`, etc.). One missed grep produced a false finding.
+- A review only counts if it actually inspected the code. Read the review file, not just the
+  exit code; `scripts/codex_review.py` now exits 2 when Codex reports `review_completed=false`.
+- Never `await` a synchronous SDK network call (ArmorIQ approval polling, status, report) on
+  the event loop. Wrap it in `asyncio.to_thread`, or the voice pipeline freezes.
+- When a console form preselects an action (for example Hold on untouched policy rows), set
+  every row explicitly and re-open the saved item to check it stuck.
