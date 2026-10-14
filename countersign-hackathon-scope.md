@@ -27,7 +27,11 @@ Every rule from the Flow State brief, mapped to where Countersign satisfies it. 
 | Security demos use actual ArmorIQ enforcement | Adversarial results come only from live ArmorIQ runs; mocked responses are used in unit tests only and are never reported as results | `evals/reports/` metadata records `armoriq_mode: live` |
 | Do not attack ArmorIQ infrastructure, other participants, or third parties | The simulator attacks only our own agent; eval runs are paced to respect ArmorIQ rate limits; no load testing through ArmorIQ endpoints | Eval runner pacing config |
 | Submission: GitHub repo with code, README, setup instructions | Monorepo with `docker compose up` setup | README |
-| Submission: demo video, max 90 seconds | 90-second cut (shot list in section 8) | Video link in README and submission form |
+| Submission: demo video. CONFLICT: the original brief says max 90 seconds; the Discord update (Oct 13) says 3-5 min, unlisted YouTube/Loom/Vimeo. Confirm with organizers | Record a 3-5 min main video and keep a 90-second cut (shot list in section 8) as a backup | Video link in README and submission form |
+| Video must show: the problem and who it's for; the product working end to end; the ArmorIQ console (tools.armoriq.ai) and how we used it; our rules in Policy Studio and what they blocked or allowed; takeaways and what we'd build next | Shot list in section 8, extended to 3-5 min | Video |
+| ArmorTools Pro active for every member (code FLOWSTATEPRO); no Pro account means not judged | Claimed on tools.armoriq.ai (Oct 13) | Account settings |
+| Deadline: 17 Oct 2026, 11:59 PM IST | Freeze the code on Oct 17 afternoon | |
+| Live demo must work Oct 17-21 | OPEN: the agent server is local-only in section 6. Confirm what "live demo" means (a scheduled call with us, or judges trying it on their own). If judges try it alone, the agent and dashboard need public hosting through Oct 21 | |
 | Submission: short description (what, how the agent works, how ArmorIQ is used, other tools) | `SUBMISSION.md`, pasted into the form | `SUBMISSION.md` |
 | Submission: proof of ArmorIQ blocking an action | Console screenshots of a blocked call (policy, reason, signed plan) plus the live demo | `docs/proof/` |
 

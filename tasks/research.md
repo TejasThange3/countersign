@@ -25,9 +25,18 @@ QUESTIONS (answer each as CONFIRMED / DOCS DISAGREE / UNKNOWN + experiment to se
    per call session).
 7. Role ranking for approvers: how a role is made "higher" than another.
 8. Hackathon account: are policies, holds, delegation API and observability available at no cost?
+9. Two consoles exist: tools.armoriq.ai ("ArmorTools": Intent Plans, Agents, Policies / Policy
+   Studio, Sessions) and platform.armoriq.ai (Security overview: Intent, Policies, Inventory,
+   Observability, API). Are they the same backend and account? Which one issues the SDK API key,
+   registers agents and MCP servers, and holds the policies the SDK enforces? The organizers
+   say judges want to see tools.armoriq.ai and Policy Studio.
+10. Does the `armoriq-sdk` Python client (for_user / capture_plan / invoke) report decisions to
+    tools.armoriq.ai, platform.armoriq.ai, or both? Which base URL does it use by default?
+11. "ArmorClaude" (the curl installer on tools.armoriq.ai Home) traces coding agents. Confirm that
+    it is unrelated to governing our product agent, so it can be skipped.
 
 DONE MEANS:
-- docs/research/armoriq-day1-unknowns.md answers all 8, each with source links.
+- docs/research/armoriq-day1-unknowns.md answers all 11, each with source links.
 - A short "Implications for the bridge" section at the end.
 - notes-drafts/research.md written in the AGENTS.md notes format.
 - No code changes, so the Stop gate passes instantly and no Codex review is needed.
