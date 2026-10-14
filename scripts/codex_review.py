@@ -25,6 +25,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = ROOT / "scripts" / "codex_review_schema.json"
+# Review model and effort, independent of the user's everyday Codex config.
+REVIEW_MODEL = "gpt-6.1-sol"
+REVIEW_EFFORT = "high"
 
 PROMPT = """You are a strict senior reviewer checking code written by another AI agent.
 You did not write this code; do not trust its comments or commit messages, check the behaviour.
@@ -65,7 +68,10 @@ def git(*args: str) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Codex review of the current branch")
     parser.add_argument("--task", required=True, help="path to the lane's task card")
-    parser.add_argument("--model", help="override the Codex model")
+    parser.add_argument("--model", default=REVIEW_MODEL, help="Codex model for the review")
+    parser.add_argument(
+        "--effort", default=REVIEW_EFFORT, help="reasoning effort (low, medium, high)"
+    )
     args = parser.parse_args()
 
     codex = shutil.which("codex")
@@ -98,8 +104,7 @@ def main() -> int:
         "--output-last-message",
         str(out_json),
     ]
-    if args.model:
-        cmd += ["--model", args.model]
+    cmd += ["--model", args.model, "-c", f'model_reasoning_effort="{args.effort}"']
     cmd.append(PROMPT.format(task=args.task))
 
     print(f"codex review: branch {branch}, round {rounds} (this takes a few minutes)...")

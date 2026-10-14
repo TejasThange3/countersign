@@ -249,7 +249,7 @@ You only see the car after it has passed all four.
   code changes passes instantly; `COUNTERSIGN_SKIP_GATE=1` turns it off. Tested: with a failing
   test, it blocked 3 times, then released with the warning.
 - **Loop 3:** the reviewer subagent reviews with fresh context. Then the agent commits and runs
-  `python scripts/codex_review.py --task tasks/<lane>.md`. This calls `codex exec` with
+  `python scripts/codex_review.py --task tasks/<lane>.md`. This calls `codex exec` (model `gpt-6.1-sol`, high reasoning effort, set in the script so your everyday Codex settings are untouched) with
   `--sandbox read-only` (Codex can read and run read-only commands but can't edit) and
   `--output-schema scripts/codex_review_schema.json`. A **JSON schema** is a strict template
   for the answer, so Codex must return `{verdict, must_fix[], nice_to_have[], summary}` and
