@@ -306,7 +306,102 @@ guest id carried only as an injected tool argument.
 
 ### Q3. Delegation API: endpoints, approver auth, rate limits
 
-_Pending: the delegation researcher is still running._
+**Verdict:**
+
+- **Agent side: CONFIRMED** from the SDK.
+- **Dashboard approve path: CONFIRMED** from the platform console bundle.
+- **API-key approve and reject: UNKNOWN.** The routes exist, but their body and auth are
+  undocumented.
+
+The SDK (0.6.10) has **no approve or reject call**, so approval is raw HTTP. All routes below are on
+the backend `https://api.armoriq.ai`, with no `/api` or `/v1` prefix (`client.py:89`).
+
+**Auth modes** ([/platform/api-reference](https://docs.armoriq.ai/platform/api-reference)):
+
+- `Authorization: Bearer <jwt>` is for dashboard and user calls.
+- `x-api-key: <key>` is for SDK, agent and plugin calls.
+- "A few routes accept both."
+- The page does not say which mode each delegation route takes.
+
+**Agent side: what the SDK calls when a call is held.** All are `client.py` lines.
+
+| Method and path | Headers | Body / query | Response used | Line |
+|---|---|---|---|---|
+| `GET /delegation/my-role` | `X-API-Key`, `X-User-Email` | none | `{role, limit}`; on failure, falls back to `agent_user` with limit 0 | 1518 |
+| `POST /delegation/request` | `X-API-Key`, `X-User-Email`, `Idempotency-Key` | camelCase JSON: `tool, action, arguments, amount, requesterEmail, requesterRole, requesterLimit, domain, targetUrl, planId, intentReference, merkleRoot, reason` (`models.py:192-209`) | `{delegationId, status, expiresAt}` | 1551 |
+| `GET /delegation/check-approved` | `X-API-Key`, `X-User-Email` | `?tool&amount&planId` | `{approved, delegationId, ...}` | 1583 |
+| `GET /delegation/{delegationId}/status` | `X-API-Key` | none | `{status}`: `pending`, `approved`, `rejected`, `expired` or `none` | 1605 |
+| `POST /delegation/mark-executed` | `X-API-Key`, `X-User-Email`, `Idempotency-Key` | `{delegationId, planId?}` | none | 1632 |
+
+What the SDK does with a hold:
+
+- **Return value.** The session path (`enforce_sdk` and `dispatch`) does not raise. It returns
+  `EnforceResult(action="hold", allowed=False, delegation_id=..., reason=...)`
+  (`session.py:1285-1292`).
+- If creating the delegation fails, `delegation_id` is `None` and the call stays blocked
+  (`session.py:1253-1258`).
+- **Exceptions on the low-level path.** `client.invoke()` raises `PolicyHoldException`
+  (`client.py:942`) and `PolicyBlockedException` (`client.py:936`).
+- **Waiting is polling only; there is no webhook.**
+  - `await ArmorIQSession.await_approval(delegation_id, timeout=300.0, interval=5.0)` polls
+    `/delegation/{id}/status` (`session.py:1294`).
+  - It returns `"approved"`, `"rejected"` or `"timeout"` and marks approved delegations executed.
+  - It treats HTTP 429, 502, 503 and 504 as transient.
+- **Avoid `invoke_with_policy(wait_for_approval=True)`.** It polls with blocking `time.sleep`
+  (`client.py:1754`), which would stall the Pipecat event loop.
+- **Local mode turns holds into blocks** with "switch ARMORIQ_MODE=proxy to enable approval
+  workflows" (`session.py:1048-1055`).
+
+**Approver side, path A: the dashboard (CONFIRMED from `platform.armoriq.ai` JS chunks,
+2026-10-14).**
+
+- The Plans and Held-actions screens approve by changing the *plan's* status. They do not call
+  `/delegation/approve`:
+  ```
+  POST https://api.armoriq.ai/iap/plan/{planId}/update-status
+  Authorization: Bearer <dashboard JWT>      # from localStorage, set by POST /auth/login
+  x-organization-id: <orgId>
+  {"status": "approved" | "blocked" | "held", "decisionNote": "<optional>"}
+  ```
+- The held-actions mutation maps reject to `"blocked"`: `cs={approved:"approved",rejected:"blocked"}`.
+- The docs describe this as one of "two independent paths that can approve or reject a plan: the
+  SDK-facing delegation API, and the dashboard's admin status-update action"
+  ([/platform/plans](https://docs.armoriq.ai/platform/plans)).
+
+**Approver side, path B: the delegation API (UNKNOWN beyond the route names).**
+
+- The docs list `GET /delegation/poll`, `POST /delegation/approve` and `POST /delegation/reject`
+  ([/platform/api-reference](https://docs.armoriq.ai/platform/api-reference)).
+- No body, response or auth mode is documented.
+- The SDK never calls `/delegation/poll`. It is probably the approver's pending list.
+- Swagger (`/api-docs`) is "available outside production". `api.armoriq.ai/api-docs` returns 404.
+- No `github.com/armoriq` repo contains these routes. The backend is not open source.
+
+**Rate limits:**
+
+- The `delegation` bucket is 30-60 requests/min, covering "Delegation create/approve/reject".
+- The `auth` bucket (login) is 5-10/min. Reuse one approver JWT rather than logging in per hold.
+- "Most endpoints are unthrottled", including, presumably, status polling.
+- Source: [/platform/api-reference](https://docs.armoriq.ai/platform/api-reference).
+
+**Other facts:**
+
+- Unapproved delegations expire after `DELEGATION_EXPIRY_SECONDS`, default 3600
+  ([/platform/self-hosting](https://docs.armoriq.ai/platform/self-hosting)).
+- The docs say SDK `delegate()` posts `/delegation/create`. The SDK says "The /delegation/create
+  route was removed; the live delegation endpoint is /iap/trust/delegate" (`client.py:1024-1026`).
+  **DOCS DISAGREE.** That is agent-to-agent delegation, not approval, so it doesn't matter to us.
+
+**Experiment:**
+
+1. Trigger a hold with the smoke script and note `delegation_id` and `planId`.
+2. As a second, higher-role user, call `POST /iap/plan/{planId}/update-status` with
+   `{"status":"approved"}` using that user's JWT.
+3. Check whether `GET /delegation/{id}/status` flips to `approved`. That tells us whether path A
+   satisfies `await_approval`.
+4. Separately, `POST /delegation/approve` with `{"delegationId": ...}`, once with `x-api-key` and
+   once with the Bearer JWT. Read the 4xx error text for the expected fields.
+5. In both cases, also capture the browser DevTools request when approving from the dashboard UI.
 
 ### Q4. Amount thresholds on a field named `amount`
 
@@ -367,11 +462,71 @@ Don't rely on ArmorIQ for brute-force protection.
 
 ### Q6. Plan extension mid-conversation
 
-_Pending: the delegation researcher is still running._
+**Verdict: CONFIRMED that there is no signed-delta or extension mechanism. Adding tools means a
+new plan and a new token.**
+
+- **Plans are immutable.** The docs say plans "Cannot be changed once signed"
+  ([/sdk/concepts/intent-plans](https://docs.armoriq.ai/sdk/concepts/intent-plans)). To add an
+  action, call `capture_plan` again and then `get_intent_token`
+  ([/sdk/concepts/token-lifecycle](https://docs.armoriq.ai/sdk/concepts/token-lifecycle)).
+- **What happens to a tool that isn't in the plan.**
+  - Session path: blocked client-side with `tool-not-in-plan` (`session.py:804-809`).
+  - `client.invoke`: raises `IntentMismatchException` before any network call
+    (`client.py:803-818`). The proxy's HTTP 409 maps to the same exception (`client.py:974-980`).
+- **How `session.start_plan(tool_calls)` behaves** (`session.py:393-490`):
+  - It hashes the tool-call list. If the hash is unchanged, it reuses the cached token.
+  - Otherwise it **clears** `_declared_tools`, captures a new plan and mints a new token. Earlier
+    tools are not merged in.
+  - Each plan is its own trace and its own plan row.
+  - Approvals are plan-scoped ("An approval is a decision about one plan", `client.py:1573-1578`),
+    so **an approval does not survive a re-plan**.
+- **Token validity.** The session default is 3600 s (`session.py:119`). Low-level
+  `get_intent_token` defaults to 60 s (`client.py:584`). An expired token raises
+  `TokenExpiredException` client-side (`client.py:739-744`).
+- **One token per session.** The SDK keeps one `_current_token` per session object.
+- **Backend: UNKNOWN.** Whether superseded plans are closed, and whether any concurrency limit
+  applies, is not documented.
+
+**Experiment:**
+
+1. `start_plan([A])`, then `dispatch(B)`. Expect `tool-not-in-plan`.
+2. `start_plan([A, B])`, then `dispatch(B)`.
+3. Check the dashboard for a second plan row and the status of the first.
 
 ### Q7. Role ranking for approvers
 
-_Pending: the delegation researcher is still running._
+**Verdict: CONFIRMED that a ranking exists and self-approval is banned. UNKNOWN how roles are
+ordered and where an approver role is configured.**
+
+- **The rule** ([/platform/plans](https://docs.armoriq.ai/platform/plans)):
+  > "If the request exceeds the requester's role limit, a delegation request is created and the
+  > plan is held."
+  > "A human with a **higher-ranked role** than the requester can approve or reject the request. A
+  > requester can never approve their own request."
+- `ALLOW_SELF_APPROVAL` (default `false`) relaxes this only on the dashboard path
+  ([/platform/self-hosting](https://docs.armoriq.ai/platform/self-hosting)).
+- **Role and limit come from `GET /delegation/my-role`** as `{role, limit}`, with a fallback to
+  `agent_user` and limit 0 (`client.py:1515-1545`).
+  - On the session path, the SDK hardcodes `requester_role="agent_user"` and `requester_limit=0`
+    (`session.py:1270`).
+  - `agent_user` is not one of the org roles.
+- **The org roles are a different set.** They are Organization Admin, IAM Admin, Developer, Analyst
+  and Viewer ([/platform/organizations/roles-quotas](https://docs.armoriq.ai/platform/organizations/roles-quotas)).
+  No ranking is given there.
+- **Delegation roles look domain-level.** The SDK maps an org role to a domain role through the MCP
+  tool metadata `role_mapping` (`client.py:1508-1511`).
+- **An approver chain exists server-side.** `POST /iap/sdk/resolve-user` returns
+  "membership + policies + approver chain" (`client.py:341-345`, docstring only). Its shape is
+  undocumented.
+- **No policy field names an approver role.** None of the policy-spec pages document one.
+
+**Experiment:**
+
+1. Call `GET /delegation/my-role` with keys and emails for an Org Admin and a Developer. This
+   prints the role names and limits.
+2. Call `POST /iap/sdk/resolve-user` for each and inspect the approver chain.
+3. Raise a hold as the agent, then approve it as the same user (expect a refusal), as a peer, and
+   as an admin. Record each result.
 
 ### Q8. Hackathon account: is everything available at no cost?
 
@@ -403,8 +558,6 @@ _Pending: the delegation researcher is still running._
 
 ## Implications for the bridge
 
-_Draft, to be finalised once Q3, Q6 and Q7 are in._
-
 1. **Point the SDK at the production defaults** (`api.armoriq.ai`) with a platform.armoriq.ai key,
    unless the organizers confirm that tools.armoriq.ai is where the judges look. In that case, run
    E2 and set `ARMORIQ_ENV` deliberately. Record the chosen environment in every eval report
@@ -421,3 +574,23 @@ _Draft, to be finalised once Q3, Q6 and Q7 are in._
    "ArmorIQ unreachable", not as a policy denial.
 7. **Keep identity in the bridge.** The bridge also owns `verify_guest` attempt counting (Q5) and
    may need a service email for `for_user` (Q2).
+8. **Use one ArmorIQ session per voice call**, and declare every hotel tool in one `start_plan` at
+   the start of the call (Q6).
+   - Re-planning mid-call clears the declared tools, mints a new token, and drops any pending
+     approval.
+   - Set `validity_seconds` above the longest expected call; the session default is 3600.
+9. **Handle holds without blocking the event loop.**
+   - Use the session path (`enforce_sdk` or `dispatch`). A hold returns `action="hold"` with a
+     `delegation_id`.
+   - The agent tells the guest "a manager needs to approve that", and an asyncio task runs
+     `await session.await_approval(delegation_id)`.
+   - Never use `invoke_with_policy(wait_for_approval=True)`, because of `time.sleep`.
+10. **The approver (`evals/` and the dashboard) must be a second, higher-ranked human account**,
+    never the agent's identity (Q7).
+    - The proven route is the dashboard's
+      `POST /iap/plan/{planId}/update-status {"status":"approved"}` with that user's Bearer JWT and
+      `x-organization-id`. So the bridge must expose `planId` alongside `delegation_id`.
+    - Whether that flips `/delegation/{id}/status`, and whether the API-key
+      `/delegation/approve` works, must be settled live (Q3 experiment) before the approver is
+      built.
+    - Mind the 30-60/min delegation rate limit and the 5-10/min login limit.
