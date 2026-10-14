@@ -1,0 +1,47 @@
+# Skills this project keeps ON. Everything else is turned off by scripts/skills_filter.py.
+# Edit this list, then run: python scripts/skills_filter.py
+
+# Planning and thinking
+grill-me
+planning-and-task-breakdown
+incremental-implementation
+system-design
+source-driven-development
+
+# Code quality and review
+clean-code
+code-review
+code-reviewer
+code-simplification
+security-and-hardening
+verification-before-completion
+
+# Testing and debugging
+tdd
+test-engineer
+diagnosing-bugs
+debugging-and-error-recovery
+
+# This project's domain
+mcp-server-builder
+tool-design
+api-and-interface-design
+generate-synthetic-data
+evaluation
+observability-and-instrumentation
+harness-engineering
+
+# Parallel agents and git
+using-git-worktrees
+dispatching-parallel-agents
+subagent-driven-development
+finishing-a-development-branch
+
+# Shipping
+ci-cd-and-automation
+
+# Dashboard (Day 4)
+frontend-design
+shadcn
+tailwind
+tailwindcss

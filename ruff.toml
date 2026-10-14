@@ -1,0 +1,22 @@
+# One lint/format config for every Python project in the repo.
+# The ruff version is pinned in scripts/check.py (RUFF) so hooks, agents and CI all agree.
+target-version = "py312"
+line-length = 100
+
+[lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes (unused imports, undefined names)
+    "I",        # import sorting
+    "B",        # bugbear (likely bugs)
+    "UP",       # pyupgrade
+    "ASYNC",    # async pitfalls (blocking calls in async code)
+    "S",        # bandit security checks
+    "RUF",
+]
+ignore = ["E501"]  # line length is handled by the formatter
+
+[lint.per-file-ignores]
+"**/tests/**" = ["S101"]  # assert is how pytest works
+"scripts/**" = ["S603", "S607"]  # dev scripts run fixed local commands
+".claude/hooks/**" = ["S603", "S607"]

@@ -1,0 +1,32 @@
+[project]
+name = "countersign-evals"
+version = "0.1.0"
+description = "Countersign evaluation harness: caller simulator, approver, scenarios, metrics."
+readme = "README.md"
+authors = [
+    { name = "Tejas Thange", email = "142657235+TejasThange3@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+countersign-evals = "countersign_evals:main"
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "integration: needs local Docker services (Postgres, Redis)",
+    "live: calls real external services (ArmorIQ, ElevenLabs, Gemini); never mocked",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+]

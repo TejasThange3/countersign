@@ -1,0 +1,7 @@
+# Normalise line endings so Windows and Linux (CI, Docker) agree.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.png binary
+*.jpg binary
+*.wav binary
+*.mp3 binary

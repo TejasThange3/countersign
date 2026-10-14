@@ -1,0 +1,3 @@
+# Gitignored files copied into every new worktree (claude -w, desktop worktrees, subagent worktrees).
+# Without this, each agent's worktree would start with no API keys.
+.env
