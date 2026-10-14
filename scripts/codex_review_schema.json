@@ -1,23 +1,63 @@
 {
   "type": "object",
   "additionalProperties": false,
-  "required": ["verdict", "must_fix", "nice_to_have", "summary"],
+  "required": [
+    "review_completed",
+    "verdict",
+    "must_fix",
+    "nice_to_have",
+    "summary"
+  ],
   "properties": {
-    "verdict": {"type": "string", "enum": ["PASS", "FAIL"]},
-    "must_fix": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
-    "nice_to_have": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
-    "summary": {"type": "string"}
+    "review_completed": {
+      "type": "boolean"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "PASS",
+        "FAIL"
+      ]
+    },
+    "must_fix": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "nice_to_have": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "summary": {
+      "type": "string"
+    }
   },
   "$defs": {
     "finding": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["file", "line", "problem", "fix"],
+      "required": [
+        "file",
+        "line",
+        "problem",
+        "fix"
+      ],
       "properties": {
-        "file": {"type": "string"},
-        "line": {"type": "integer"},
-        "problem": {"type": "string"},
-        "fix": {"type": "string"}
+        "file": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer"
+        },
+        "problem": {
+          "type": "string"
+        },
+        "fix": {
+          "type": "string"
+        }
       }
     }
   }

@@ -8,7 +8,7 @@ It reviews `main...HEAD` plus any uncommitted changes against the task card and 
 writes the findings to reviews/<branch>-r<N>.md (raw JSON and Codex log next to it), and exits:
     0  verdict PASS (no MUST FIX items)
     1  verdict FAIL (MUST FIX items listed in the review file)
-    2  the review itself could not run (Codex missing, not logged in, ...)
+    2  the review itself could not run (Codex missing, not logged in, its tools failed, ...)
 
 Codex runs with a read-only sandbox: it can read files and run read-only commands, never edit.
 """
@@ -53,6 +53,8 @@ Do not edit any file.
 Your final answer is JSON matching the provided schema:
 - `must_fix`: bugs, security problems, rule violations, missing tests for required behaviour.
 - `nice_to_have`: improvements that should not block merging.
+- `review_completed`: true only if you actually read the diff and the changed files. If your tools
+  failed or you could not inspect the code, set it to false and explain in `summary`.
 - `verdict`: "FAIL" if `must_fix` is non-empty, otherwise "PASS".
 - `line`: the most relevant line number (use 1 if the finding is about a whole file).
 - `summary`: two or three sentences.
@@ -122,8 +124,15 @@ def main() -> int:
         print(f"codex review returned invalid JSON; treat as FAIL and read {rel(out_json)}")
         return 1
 
-    # The verdict is derived from the findings, not trusted on its own.
-    verdict = "FAIL" if review.get("must_fix") else "PASS"
+    # A review that never inspected the code is "could not run", never a pass.
+    if not review.get("review_completed"):
+        print(
+            "codex review did not inspect the code (review_completed=false): "
+            f"{review.get('summary', '').strip()}  (details: {rel(out_json)})"
+        )
+        return 2
+    # Fail if either the findings or Codex's own verdict say so.
+    verdict = "FAIL" if review.get("must_fix") or review.get("verdict") != "PASS" else "PASS"
     out_md.write_text(render(branch, rounds, review, verdict), encoding="utf-8")
     print(
         f"codex review verdict: {verdict}  "
