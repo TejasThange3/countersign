@@ -27,3 +27,12 @@ Start by showing me your plan before editing.
 - Two lanes never own the same file. If two tasks need the same file, run them one after another.
 - Read-only lanes (research, "explain this module") are safe to run alongside anything.
 - Start with 3 lanes. Reviewing their output is the bottleneck, not starting them.
+
+## Follow-ups (not yet assigned)
+
+- hotel-mcp (Codex r3 nice-to-have): `cli.py` alembic_config breaks on percent-encoded DB
+  passwords (`p%40ss`): escape `%` as `%%`. Check before deploying with a Neon URL.
+- hotel-mcp (Codex r3 nice-to-have): huge finite `amount` values give a generic tool error;
+  return HotelError for amounts that can't be stored in Numeric(10,2).
+- ArmorIQ policy: the $100 hold threshold on money tools is not configured yet (bridge lane).
+- Add an mcp-server service to infra/docker-compose.yml (main).
