@@ -7,7 +7,14 @@ authors = [
     { name = "Tejas Thange", email = "142657235+TejasThange3@users.noreply.github.com" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "alembic>=1.20.0",
+    "asyncpg>=0.32.0",
+    "fastmcp>=4.1.0",
+    "pydantic-settings>=2.15.0",
+    "sqlalchemy[asyncio]>=2.1.4",
+    "uvicorn>=0.54.0",
+]
 
 [project.scripts]
 hotel-mcp = "hotel_mcp:main"
@@ -27,6 +34,8 @@ markers = [
 
 [dependency-groups]
 dev = [
+    "aiosqlite>=0.22.1",
+    "httpx>=0.28.1",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
 ]

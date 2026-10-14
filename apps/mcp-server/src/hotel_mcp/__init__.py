@@ -2,4 +2,6 @@
 
 
 def main() -> None:
-    print("hotel-mcp: skeleton only, nothing implemented yet.")
+    from hotel_mcp.cli import main as cli_main
+
+    cli_main()
