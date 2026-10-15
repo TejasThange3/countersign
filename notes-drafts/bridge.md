@@ -42,8 +42,15 @@ phone call and sends every tool call through `gateway.call(name, args)`.
   the tool, and reports it. While a hold is pending, an unverified caller can't run
   `verify_guest` to switch identity under it. The hold is recorded inside the identity lock, so
   a `verify_guest` that runs at the same moment still sees it. If ArmorIQ itself reuses an
-  earlier approval (`check()` answers allow with a delegation id), the bridge consumes that
-  approval through `CheckedApprovals` too: the SDK's own "mark used" ignores refusals.
+  earlier approval (`check()` answers allow with a delegation id), the bridge refuses it
+  (`approval_reused`). The SDK matches that approval by tool + amount + plan, not by the
+  arguments, so a second $250 refund for another booking could otherwise spend the first
+  refund's approval. Approvals are spent only through `wait()`, with the arguments that were
+  held.
+- **Each call holds its identity until it is done.** Check, run and report all happen under
+  one per-call lock. So a `verify_guest` that arrives meanwhile waits for in-flight tools,
+  and each tool is reported through the ArmorIQ session that allowed it. The cost: one phone
+  call's tool calls run one at a time.
 - **One plan at a time per process.** The SDK mints a plan's token from one field on the
   shared client that every new session overwrites. If two phone calls started a plan at the
   same moment, one could get a token for the other caller's identity, so "open session + start
@@ -76,7 +83,7 @@ phone call and sends every tool call through `gateway.call(name, args)`.
 - **Reason codes are a contract** read by the evals lane: `verify_locked_out`, `not_verified`,
   `unknown_tool`, `hold_pending`, `other_guest`, `no_plan`, `enforce_error`,
   `armoriq_disabled`, `armoriq_unreachable` (plus `enforce_unavailable`,
-  `hold_without_delegation`, `approval_error`, `unknown_hold`, `approved`, `rejected`,
+  `hold_without_delegation`, `approval_error`, `approval_reused`, `unknown_hold`, `approved`, `rejected`,
   `timeout`). Count refusals by `reason`, not by `decision`. In particular,
   `other_guest` comes back with `decision=allow, outcome=ran`: ArmorIQ allowed the lookup and
   it ran, but the bridge keeps the call on the first guest and withholds the result. A second
@@ -105,4 +112,4 @@ is the live proof). The policy is written down in
   You should see `1 passed`. The steps are: unverified refund BLOCK, verify ALLOW, $40 HOLD ->
   approved -> payment row written, $250 HOLD -> rejected -> no row, export BLOCK. It writes
   masked evidence to `apps/agent/tests/bridge/evidence/` (first passing run:
-  `20261015T110948Z-live-bridge.json`).
+  `20261015T110948Z-live-bridge.json`; the run on the final code is `20261015T114401Z-live-bridge.json`).

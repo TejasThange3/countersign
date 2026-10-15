@@ -117,6 +117,7 @@ class FakeArmorIQSession:
         opts: ReportOptions | None = None,
     ) -> None:
         self.log.reports.append((tool_name, opts.status if opts else None))
+        self.log.reported_by.append((tool_name, self.user_email))
 
     def close(self) -> None:
         if self.log.fail_close:
@@ -129,6 +130,7 @@ class FakeArmorIQLog:
         self.plans: list[tuple[str, list[str], str | None]] = []
         self.checks: list[tuple[str, str, dict[str, Any]]] = []
         self.reports: list[tuple[str, str | None]] = []
+        self.reported_by: list[tuple[str, str]] = []
         self.fail_plan = False
         self.fail_close = False
         self.check_seconds = 0.0
@@ -162,7 +164,6 @@ class FakeApprovals:
         self.statuses = statuses or ["pending"]
         self.polls = 0
         self.marked: list[tuple[str, str, str | None]] = []
-        self.mark_error: Exception | None = None
 
     def get_delegation_status(self, delegation_id: str) -> str:
         item = self.statuses[min(self.polls, len(self.statuses) - 1)]
@@ -174,8 +175,6 @@ class FakeApprovals:
     def mark_delegation_executed(
         self, user_email: str, delegation_id: str, plan_id: str | None = None
     ) -> None:
-        if self.mark_error is not None:
-            raise self.mark_error
         self.marked.append((user_email, delegation_id, plan_id))
 
 

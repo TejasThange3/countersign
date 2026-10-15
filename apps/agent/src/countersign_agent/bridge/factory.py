@@ -76,7 +76,12 @@ class GovernedGatewayFactory:
             masker=self.masker,
             events=events,
         )
-        await gateway.start()
+        try:
+            await gateway.start()
+        except BaseException:
+            # Includes cancellation (the caller hung up during the first plan).
+            await gateway.close()
+            raise
         return gateway
 
     async def _connect_mcp(self) -> ToolExecutor:

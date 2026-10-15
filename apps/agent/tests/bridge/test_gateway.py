@@ -395,30 +395,33 @@ async def test_concurrent_waits_on_one_hold_run_the_tool_once() -> None:
     assert sum(1 for c in h.mcp.calls if c[0] == "issue_refund") == 1
 
 
-def reuse_approval(tool: str, args: dict[str, object]) -> EnforceResult:
-    """The SDK's check() returns this when it finds an approved delegation for this plan; it
-    has already tried to mark it executed and ignored any refusal."""
-    if tool == "issue_refund":
+async def test_an_approval_reused_inside_check_is_refused() -> None:
+    """The SDK's check() reuses an approved delegation by tool + amount + plan, not by the
+    arguments. A second $250 refund for another booking must not spend the approval that the
+    first refund's wait() owns."""
+    reused = False
+
+    def hold_then_reuse(tool: str, args: dict[str, object]) -> EnforceResult:
+        nonlocal reused
+        if tool != "issue_refund":
+            return EnforceResult(allowed=True, action="allow")
+        if not reused:
+            reused = True
+            return EnforceResult(allowed=False, action="hold", delegation_id="d-7")
         return EnforceResult(allowed=True, action="allow", delegation_id="d-7")
-    return EnforceResult(allowed=True, action="allow")
 
-
-async def test_reused_approval_is_consumed_through_checked_approvals() -> None:
-    h = Harness(decide=reuse_approval)
+    h = Harness(decide=hold_then_reuse, approvals=FakeApprovals(["pending", "approved"]))
     gw = await verified(h)
-    result = await gw.call("issue_refund", BIG_REFUND)
-    assert result.outcome is Outcome.RAN
-    assert h.approvals.marked == [(GUEST, "d-7", "plan-2")]
-
-
-async def test_reused_approval_that_cannot_be_consumed_fails_closed() -> None:
-    h = Harness(decide=reuse_approval)
-    gw = await verified(h)
-    h.approvals.mark_error = DelegationException("fake 403", delegation_id="d-7", status_code=403)
-    result = await gw.call("issue_refund", BIG_REFUND)
-    assert result.decision is Decision.UNAVAILABLE
-    assert result.reason == "approval_error"
-    assert all(c[0] != "issue_refund" for c in h.mcp.calls)
+    held = await gw.call("issue_refund", BIG_REFUND)
+    other_booking = {**BIG_REFUND, "booking_id": 2}
+    second = await gw.call("issue_refund", other_booking)
+    assert second.decision is Decision.UNAVAILABLE
+    assert second.reason == "approval_reused"
+    assert second.outcome is Outcome.NOT_RUN
+    approved = await gw.wait(held, timeout_s=1)
+    assert approved.outcome is Outcome.RAN
+    refunds = [c for c in h.mcp.calls if c[0] == "issue_refund"]
+    assert refunds == [("issue_refund", {**BIG_REFUND, "guest_id": GUEST_ID})]
 
 
 async def test_approval_error_fails_closed() -> None:
@@ -575,9 +578,35 @@ async def test_verify_during_a_slow_hold_publication_still_sees_the_hold() -> No
     gw._events = slow_sink  # the dashboard is slow exactly while the hold is announced
     held_task = asyncio.create_task(gw.call("get_hotel_info", {}))
     await publishing.wait()
-    verify = await gw.call("verify_guest", VERIFY)
+    verify_task = asyncio.create_task(gw.call("verify_guest", VERIFY))
+    await asyncio.sleep(0.05)
+    assert not verify_task.done()  # waits for the in-flight call
     release.set()
-    held = await held_task
+    held, verify = await held_task, await verify_task
     assert held.outcome is Outcome.PENDING
     assert verify.reason == "hold_pending"
     assert len(h.log.plans) == 1
+
+
+async def test_a_run_in_flight_is_reported_through_the_session_that_allowed_it() -> None:
+    h = Harness()
+    gw = await h.open()
+    publishing, release = asyncio.Event(), asyncio.Event()
+
+    async def slow_sink(event: GatewayEvent) -> None:
+        h.events.append(event)
+        if event.kind == "tool_decided" and event.data.get("tool") == "get_hotel_info":
+            publishing.set()
+            await release.wait()
+
+    gw._events = slow_sink
+    info_task = asyncio.create_task(gw.call("get_hotel_info", {}))
+    await publishing.wait()
+    verify_task = asyncio.create_task(gw.call("verify_guest", VERIFY))
+    await asyncio.sleep(0.05)
+    release.set()
+    info, verify = await info_task, await verify_task
+    assert info.outcome is Outcome.RAN and info.plan_id == "plan-1"
+    assert verify.outcome is Outcome.RAN
+    assert ("get_hotel_info", UNVERIFIED) in h.log.reported_by
+    assert h.log.plans[-1][0] == GUEST

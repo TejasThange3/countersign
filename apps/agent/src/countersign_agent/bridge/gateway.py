@@ -129,14 +129,14 @@ class GovernedGateway:
         if name == VERIFY_TOOL:
             return await self._verify(arguments)
 
+        # Check, run and report all happen under the identity the check ran as: a concurrent
+        # verify_guest waits for in-flight tools, and sees any hold registered here.
         async with self._identity_lock:
             args = self._with_identity(tool, arguments)
             await self._emit("tool_requested", {"tool": name, "arguments": args})
             verdict = await self._enforcer.check(name, args)
             plan_id = self._enforcer.plan_id
             verdict.latency_ms += self._take_unbilled()
-            # Decided against the identity the check ran as, and a hold is registered before
-            # the lock is released, so a concurrent verify_guest sees it and won't re-plan.
             unverified_guest_call = tool.needs_guest_id and not self._identity.verified
             if (
                 verdict.decision is Decision.HOLD
@@ -152,20 +152,22 @@ class GovernedGateway:
                     reason=verdict.reason,
                     latency_ms=verdict.latency_ms,
                 )
-        await self._emit_decided(name, verdict, plan_id)
+            await self._emit_decided(name, verdict, plan_id)
 
-        if verdict.decision in (Decision.ALLOW, Decision.HOLD) and unverified_guest_call:
-            # ArmorIQ was asked first (its block is the audit trail); the bridge still never
-            # runs a guest-scoped tool without a verified guest.
-            return await self._refuse(name, R_NOT_VERIFIED, SAY_NOT_VERIFIED, verdict, plan_id)
-        if verdict.decision is Decision.HOLD and verdict.delegation_id:
-            return self._result(
-                name, verdict, Outcome.PENDING, SAY_HELD, plan_id, verdict.delegation_id
-            )
-        if verdict.decision is not Decision.ALLOW:
-            say = SAY_BLOCKED if verdict.decision is Decision.BLOCK else SAY_UNAVAILABLE
-            return await self._finish(self._result(name, verdict, Outcome.NOT_RUN, say, plan_id))
-        return await self._run(name, args, verdict, plan_id)
+            if verdict.decision in (Decision.ALLOW, Decision.HOLD) and unverified_guest_call:
+                # ArmorIQ was asked first (its block is the audit trail); the bridge still never
+                # runs a guest-scoped tool without a verified guest.
+                return await self._refuse(name, R_NOT_VERIFIED, SAY_NOT_VERIFIED, verdict, plan_id)
+            if verdict.decision is Decision.HOLD and verdict.delegation_id:
+                return self._result(
+                    name, verdict, Outcome.PENDING, SAY_HELD, plan_id, verdict.delegation_id
+                )
+            if verdict.decision is not Decision.ALLOW:
+                say = SAY_BLOCKED if verdict.decision is Decision.BLOCK else SAY_UNAVAILABLE
+                return await self._finish(
+                    self._result(name, verdict, Outcome.NOT_RUN, say, plan_id)
+                )
+            return await self._run(name, args, verdict, plan_id)
 
     async def _verify(self, arguments: dict[str, Any]) -> ToolResult:
         name = VERIFY_TOOL
@@ -284,24 +286,34 @@ class GovernedGateway:
                     pending.delegation_id,
                 )
             )
-        self._pending.pop(pending.delegation_id, None)
-        await self._emit("hold_resolved", {**hold_data, "resolution": approval})
-        if approval != "approved":
-            verdict.reason = approval  # rejected | timeout
-            say = SAY_REJECTED if approval == "rejected" else SAY_TIMEOUT
-            return await self._finish(
-                self._result(
+        if approval == "approved":
+            # The hold leaves _pending only once the lock is held, so no verify_guest can
+            # re-plan between the approval and the run, and the run is reported through the
+            # session that asked for it.
+            async with self._identity_lock:
+                self._pending.pop(pending.delegation_id, None)
+                await self._emit("hold_resolved", {**hold_data, "resolution": approval})
+                verdict.reason = "approved"
+                return await self._run(
                     pending.tool,
+                    pending.arguments,
                     verdict,
-                    Outcome.NOT_RUN,
-                    say,
                     pending.plan_id,
                     pending.delegation_id,
                 )
+        self._pending.pop(pending.delegation_id, None)
+        await self._emit("hold_resolved", {**hold_data, "resolution": approval})
+        verdict.reason = approval  # rejected | timeout
+        say = SAY_REJECTED if approval == "rejected" else SAY_TIMEOUT
+        return await self._finish(
+            self._result(
+                pending.tool,
+                verdict,
+                Outcome.NOT_RUN,
+                say,
+                pending.plan_id,
+                pending.delegation_id,
             )
-        verdict.reason = "approved"
-        return await self._run(
-            pending.tool, pending.arguments, verdict, pending.plan_id, pending.delegation_id
         )
 
     async def close(self) -> None:

@@ -104,6 +104,7 @@ def test_verified_true_without_guest_id_is_a_failure() -> None:
         (EnforceResult(allowed=True, action="allow"), Decision.ALLOW),
         (EnforceResult(allowed=False, action="block", reason="tool_denied"), Decision.BLOCK),
         (EnforceResult(allowed=False, action="hold", delegation_id="d"), Decision.HOLD),
+        (EnforceResult(allowed=True, action="allow", delegation_id="d"), Decision.UNAVAILABLE),
         (EnforceResult(allowed=False, action="hold"), Decision.UNAVAILABLE),
         (
             EnforceResult(allowed=False, action="block", reason="enforce-unavailable: x"),
@@ -270,3 +271,56 @@ async def test_factory_closes_mcp_if_discovery_fails() -> None:
     with pytest.raises(ConnectionError):
         await factory.open_call("call-11")
     assert mcp.closed
+
+
+class FakeSlowSession:
+    """A session whose plan takes a while, so the caller can be cancelled meanwhile."""
+
+    def __init__(self, gate: threading.Event) -> None:
+        self.gate = gate
+        self.closed = False
+
+    def start_plan(self, tool_calls: list[dict[str, object]], goal: str | None = None) -> None:
+        self.gate.wait(5)
+
+    def close(self) -> None:
+        self.closed = True
+
+
+async def test_cancelled_open_call_closes_mcp_and_the_late_armoriq_session() -> None:
+    mcp = FakeMCP()
+    gate, opened = threading.Event(), threading.Event()
+    sessions: list[FakeSlowSession] = []
+
+    def slow_session(email: str) -> FakeSlowSession:
+        sessions.append(FakeSlowSession(gate))
+        opened.set()
+        return sessions[-1]
+
+    async def connect() -> FakeMCP:
+        return mcp
+
+    async def enforcer(tool_names: list[str]) -> ArmorIQEnforcer:
+        return ArmorIQEnforcer(
+            session_factory=slow_session,  # type: ignore[arg-type]
+            approvals=FakeApprovals(),
+            tool_names=tool_names,
+            poll_seconds=0.01,
+            plan_lock=threading.Lock(),
+        )
+
+    factory = GovernedGatewayFactory(
+        settings(), executor_factory=connect, enforcer_factory=enforcer
+    )
+    task = asyncio.create_task(factory.open_call("call-12"))
+    assert await asyncio.to_thread(opened.wait, 5)  # the plan is now being opened
+    task.cancel()  # the caller hangs up while the plan is still being opened
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert mcp.closed
+    gate.set()  # the plan finishes after the hang-up
+    for _ in range(100):  # closed from a worker thread shortly after
+        if sessions[0].closed:
+            break
+        await asyncio.sleep(0.01)
+    assert sessions[0].closed

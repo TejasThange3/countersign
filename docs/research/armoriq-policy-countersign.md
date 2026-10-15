@@ -49,11 +49,10 @@ fee waiver needs an approver. The bridge has no amount logic of its own, because
 make the decision (product rule 1). The evals lane's money threshold constant follows this
 choice (main owns that change).
 
-**Saved state as last read (2026-10-15, about 11:10 UTC).** `resolve-user` showed all 17
-`+unverified` rows exactly as in the table. It showed 16 `+guest` rows that match the table
-except two: `cancel_own_booking` was **block** (should be allow), and `cancel_any_booking`
-had no row, so it fell to the default block. The user is correcting both. Neither tool is used
-by the live proof.
+**Saved state, verified read-only.** `resolve-user` shows both overrides exactly as in the
+table: 17 explicit rows each, with `defaultEnforcementAction: block`. The first save had
+`cancel_own_booking` = block for `+guest` and no `cancel_any_booking` row. The user fixed both,
+and the re-read confirmed the fix. Neither tool is used by the live proof.
 
 ## Findings from the live probes
 
@@ -109,3 +108,9 @@ A second, unplanned run at 11:11:41Z
 plain `pytest` over `tests/bridge` didn't skip live tests at the time. Its decisions were the
 same. It wrote synthetic payment row 20 (the approved $40), and the rejected $250 again wrote
 nothing. `tests/bridge/conftest.py` now skips live tests unless `-m live` is given.
+
+After the review fixes (holds registered under the identity lock, run and report kept on the
+authorising session, reused approvals refused, one plan opened at a time), the proof ran
+again at 11:44:01Z (`20261015T114401Z-live-bridge.json`). It passed with the same decisions:
+payment row 21 was written for the approved $40, and nothing for the rejected $250. This is
+the run that matches the final code.

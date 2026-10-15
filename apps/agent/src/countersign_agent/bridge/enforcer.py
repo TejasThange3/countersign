@@ -96,7 +96,14 @@ def _ms_since(started: float) -> float:
 def to_verdict(result: EnforceResult, latency_ms: float) -> Verdict:
     """Only an explicit allow runs a tool; a hold needs a delegation to be approvable."""
     reason = result.reason
-    if result.allowed:
+    if result.allowed and result.delegation_id:
+        # The SDK reusing an earlier approval inside check() (session.py:1218-1251). Its lookup
+        # matches tool + amount + plan, not the arguments, and it marks the approval used
+        # without checking the answer. So a second $250 refund for another booking could spend
+        # the approval a pending wait() owns. Approvals are spent only through wait(), with
+        # the arguments that were held.
+        decision, reason = Decision.UNAVAILABLE, "approval_reused"
+    elif result.allowed:
         decision = Decision.ALLOW
     elif result.action == "hold":
         if result.delegation_id:
@@ -144,14 +151,34 @@ class ArmorIQEnforcer:
             await self._close_session(old)
         self._user_email = user_email
         started = time.perf_counter()
+        # A worker thread can't be cancelled: if the caller hangs up meanwhile, the session it
+        # eventually returns must still be closed, so the thread's result is kept (shield).
+        opening = asyncio.ensure_future(asyncio.to_thread(self._open_plan, user_email, goal))
         try:
-            session, token = await asyncio.to_thread(self._open_plan, user_email, goal)
+            session, token = await asyncio.shield(opening)
+        except asyncio.CancelledError:
+            opening.add_done_callback(self._close_orphan)
+            raise
         except Exception:
             logger.exception("ArmorIQ session/plan failed; every check will fail closed")
             return _ms_since(started)
         self._session = session
         self.plan_id = getattr(token, "plan_id", None)
         return _ms_since(started)
+
+    def _close_orphan(self, opening: asyncio.Future[tuple[GovernedSession, Any]]) -> None:
+        if opening.cancelled() or opening.exception() is not None:
+            return
+        session, _ = opening.result()
+        # Off the event loop: close() flushes the SDK's observability thread over HTTP.
+        asyncio.get_running_loop().run_in_executor(None, self._close_quietly, session)
+
+    @staticmethod
+    def _close_quietly(session: GovernedSession) -> None:
+        try:
+            session.close()
+        except Exception:
+            logger.warning("ArmorIQ session close failed", exc_info=True)
 
     def _open_plan(self, user_email: str, goal: str) -> tuple[GovernedSession, Any]:
         """Blocking; runs in a worker thread."""
@@ -164,10 +191,7 @@ class ArmorIQEnforcer:
                     [{"name": n, "args": {}} for n in self._tool_names], goal
                 )
             except Exception:
-                try:
-                    session.close()  # stop its observability thread
-                except Exception:
-                    logger.warning("ArmorIQ session close failed", exc_info=True)
+                self._close_quietly(session)  # stop its observability thread
                 raise
         return session, token
 
@@ -185,34 +209,8 @@ class ArmorIQEnforcer:
                 latency_ms=_ms_since(started),
             )
         verdict = to_verdict(result, _ms_since(started))
-        if verdict.decision is Decision.ALLOW and result.delegation_id:
-            verdict = await self._consume_reused_approval(tool, result.delegation_id, verdict)
         if verdict.decision is Decision.UNAVAILABLE:
             logger.warning("ArmorIQ unavailable for %s: %s", tool, result.reason)
-        return verdict
-
-    async def _consume_reused_approval(
-        self, tool: str, delegation_id: str, verdict: Verdict
-    ) -> Verdict:
-        """An allow carrying a delegation id is the SDK reusing an earlier approval for this
-        plan (session.py:1218-1251). The SDK marks it executed itself but ignores a refusal, so
-        it is marked again through the checked backend (same Idempotency-Key, so this reads
-        the backend's real answer) and the tool runs only if that succeeds."""
-        try:
-            await asyncio.to_thread(
-                self._approvals.mark_delegation_executed,
-                self._user_email or "",
-                delegation_id,
-                self.plan_id,
-            )
-        except Exception:
-            logger.exception("reused approval for %s could not be consumed (fail closed)", tool)
-            return Verdict(
-                decision=Decision.UNAVAILABLE,
-                reason="approval_error",
-                policy=verdict.policy,
-                latency_ms=verdict.latency_ms,
-            )
         return verdict
 
     async def wait(
