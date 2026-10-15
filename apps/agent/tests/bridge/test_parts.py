@@ -19,9 +19,10 @@ from countersign_agent.bridge.enforcer import (
     UnavailableEnforcer,
     to_verdict,
 )
-from countersign_agent.bridge.factory import GovernedGatewayFactory
+from countersign_agent.bridge.gateway_factory import GovernedGatewayFactory
 from countersign_agent.bridge.identity import CallIdentity, Verify
 from countersign_agent.bridge.masking import Masker, install_masked_logging
+from countersign_agent.bridge.redact import REDACTED
 from countersign_agent.bridge.settings import BridgeSettings
 from countersign_agent.bridge.tools import ToolInfo, convert_tools, strip_identity, tier_of
 from countersign_agent.contracts import Decision, Outcome
@@ -191,6 +192,18 @@ def test_masker_masks_personal_keys_inside_json_string_content() -> None:
         "room_number": "103",
     }
     assert cleaned["note"] == "{not json"
+
+
+def test_masker_redacts_credentials_inside_json_string_content() -> None:
+    fake = "fake-not-a-secret"
+    inner = json.dumps({"authorization": fake, "ok": 1})
+    content = json.dumps({"rows": [{"password": fake, "api_token": fake, "detail": inner}]})
+    cleaned = json.loads(Masker({}).clean({"content": content})["content"])
+    row = cleaned["rows"][0]
+    assert row["password"] == REDACTED
+    assert row["api_token"] == REDACTED
+    assert json.loads(row["detail"]) == {"authorization": REDACTED, "ok": 1}
+    assert fake not in json.dumps(cleaned)
 
 
 @pytest.fixture

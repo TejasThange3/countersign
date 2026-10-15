@@ -659,3 +659,27 @@ async def test_call_cancelled_after_registering_a_hold_leaves_no_stale_hold() ->
     verify = await gw.call("verify_guest", VERIFY)
     assert verify.reason != "hold_pending"
     assert verify.outcome is Outcome.RAN
+
+
+async def test_close_stops_outstanding_waits_and_invalidates_holds() -> None:
+    ids = iter(["d-1", "d-2"])
+
+    def hold_money_separately(tool: str, args: dict[str, object]) -> EnforceResult:
+        if tool == "issue_refund":
+            return EnforceResult(allowed=False, action="hold", delegation_id=next(ids))
+        return EnforceResult(allowed=True, action="allow")
+
+    h = Harness(decide=hold_money_separately, approvals=FakeApprovals(["pending"]))
+    gw = await verified(h)
+    held = await gw.call("issue_refund", BIG_REFUND)
+    other = await gw.call("issue_refund", {**BIG_REFUND, "booking_id": 2})
+    waiting = asyncio.create_task(gw.wait(held, timeout_s=10))
+    await asyncio.sleep(0.05)
+    await gw.close()  # the caller hangs up while a manager is still deciding
+    with pytest.raises(asyncio.CancelledError):
+        await waiting
+    h.approvals.statuses = ["approved"]  # a late approval must not be consumed
+    late = await gw.wait(other, timeout_s=1)
+    assert late.outcome is Outcome.NOT_RUN
+    assert h.approvals.marked == []
+    assert all(c[0] != "issue_refund" for c in h.mcp.calls)

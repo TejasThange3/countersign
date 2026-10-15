@@ -28,13 +28,6 @@ def _mask_personal(value: Any) -> Any:
         }
     if isinstance(value, list):
         return [_mask_personal(v) for v in value]
-    if isinstance(value, str) and value[:1] in ("{", "["):
-        # Tool results travel as JSON text (ToolResult.content); key masking must see inside.
-        try:
-            parsed = json.loads(value)
-        except ValueError:
-            return value
-        return json.dumps(_mask_personal(parsed))
     return value
 
 
@@ -55,9 +48,26 @@ class Masker:
         self.mask = {k: v for k, v in mask.items() if k}
 
     def clean(self, data: Any) -> Any:
+        data = self._clean_json_text(data)
         # Known identities first, so they keep a readable placeholder like <guest>.
         masked = mask_identities(_mask_personal(redact(data)), self.mask)
         return _mask_emails(masked)
+
+    def _clean_json_text(self, value: Any) -> Any:
+        """Tool results travel as JSON text (ToolResult.content), where key-based redaction
+        and masking can't see. Each JSON object or list held in a string is decoded, given
+        the full clean (nested JSON text included), and encoded again."""
+        if isinstance(value, dict):
+            return {k: self._clean_json_text(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [self._clean_json_text(v) for v in value]
+        if isinstance(value, str) and value[:1] in ("{", "["):
+            try:
+                parsed = json.loads(value)
+            except ValueError:
+                return value
+            return json.dumps(self.clean(parsed))
+        return value
 
 
 class MaskingFormatter(logging.Formatter):

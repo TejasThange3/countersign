@@ -29,7 +29,7 @@ from countersign_agent.bridge.settings import BridgeSettings
 from countersign_agent.bridge.tools import convert_tools
 from countersign_agent.contracts import EventSink
 
-logger = logging.getLogger("countersign_agent.bridge.factory")
+logger = logging.getLogger("countersign_agent.bridge.gateway_factory")
 
 ExecutorFactory = Callable[[], Awaitable[ToolExecutor]]
 EnforcerFactory = Callable[[list[str]], Awaitable[Enforcer]]

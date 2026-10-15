@@ -14,9 +14,13 @@ ArmorIQ console (Policy Studio). Nothing in the repo writes it.
 | Policy | `countersign` (policyId `facadfec-714a-4f72-bab6-65f71d4ca6b4`), target `mcp_server` = hotel-mcp-2, priority 50, default action **Block** |
 | Identities | Org members (Viewer role): the `+unverified` alias (ARMORIQ_USER_UNVERIFIED) and the `+guest` alias (ARMORIQ_USER_GUEST). The org owner is the approver (ARMORIQ_ADMIN_EMAIL) |
 
-The URL of hotel-mcp-2 is a cloudflared quick tunnel. A restarted tunnel gets a new URL, so
-the registration has to be updated after every restart. Enforcement itself never calls the
-MCP URL; only registration and scans do.
+The URL registered for hotel-mcp-2 was a cloudflared quick tunnel, needed only for
+registration and the tool scan. Enforcement never calls the MCP URL: it matches the tool name
+and the intent token against the policy (Day 1 finding). The bridge's executor talks to
+hotel-mcp locally (`MCP_URL=http://localhost:8000/mcp`). So a dead tunnel, and the stale URL
+it leaves on the registration, doesn't affect decisions, and live runs need only hotel-mcp
+running locally. The tunnel and a URL update are needed again only to re-scan tools, for
+example after adding a tool.
 
 ## The rows
 

@@ -66,11 +66,16 @@ phone call and sends every tool call through `gateway.call(name, args)`.
   blanked, even inside tool results that travel as JSON text, and any stray email address
   becomes `<email>`.
   The model still sees the real tool result; only published copies are masked.
-- **Factory** (`factory.py`). Builds the ArmorIQ client lazily, in a worker thread. If the
-  client can't be built (bad key, no network), the call gets an `UnavailableEnforcer` that
-  refuses every tool with `armoriq_unreachable`. The next call tries again.
+- **Factory** (`gateway_factory.py`). Builds the ArmorIQ client lazily, in a worker thread.
+  If the client can't be built (bad key, no network), the call gets an `UnavailableEnforcer`
+  that refuses every tool with `armoriq_unreachable`. The next call tries again.
   `DISABLE_ARMORIQ=1` gives the baseline `DisabledEnforcer` (everything runs, and each
-  verdict says `armoriq_disabled`).
+  verdict says `armoriq_disabled`). The voice app and the eval runner load it through
+  `GATEWAY_FACTORY=countersign_agent.bridge:factory`, a zero-argument function that returns
+  a `GovernedGatewayFactory` configured from `.env`.
+- **Hang-up** (`gateway.close()`). Every pending hold is invalidated, and any wait still
+  polling for a manager is cancelled before the MCP connection and the ArmorIQ session close,
+  so no approval is used up for a call that has ended.
 - **Plan steps are pinned to `ARMORIQ_MCP_NAME`** (`armoriq_setup.py`). The SDK would
   otherwise look tools up in a flat tool -> server map, which can pick a leftover test server
   that shares tool names.
@@ -112,7 +117,8 @@ is the live proof). The policy is written down in
   `verify LRK-1001 Okafor`, then `call issue_refund {"booking_id": 1, "amount": 40}`. It
   holds; approve it in the ArmorIQ console, then type `wait`, which waits for the last held
   call and runs it once approved.
-- Live proof (real ArmorIQ, needs hotel-mcp and the tunnel up):
+- Live proof (real ArmorIQ; needs only hotel-mcp running locally at `MCP_URL`, because
+  ArmorIQ never calls the MCP URL while enforcing, so no tunnel is needed):
   `uv run --project apps/agent pytest -m live apps/agent/tests/bridge/test_live_bridge.py -s`.
   You should see `1 passed`. The steps are: unverified refund BLOCK, verify ALLOW, $40 HOLD ->
   approved -> payment row written, $250 HOLD -> rejected -> no row, export BLOCK. It writes

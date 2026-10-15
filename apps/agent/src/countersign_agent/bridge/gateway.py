@@ -100,6 +100,9 @@ class GovernedGateway:
         # Holds someone is already waiting on. The hold stays in _pending meanwhile (so verify
         # is still refused under it), but a second wait must not run the tool a second time.
         self._waiting: set[str] = set()
+        # Tasks inside wait(): close() cancels them so no approval is consumed after hang-up.
+        self._wait_tasks: set[asyncio.Task[Any]] = set()
+        self._closed = False
         # Serialises identity changes against checks: a check never runs half-way through a
         # re-plan, and the injected guest_id always matches the ArmorIQ identity.
         self._identity_lock = asyncio.Lock()
@@ -237,7 +240,8 @@ class GovernedGateway:
     # --- holds ---
 
     async def wait(self, held: ToolResult, timeout_s: float = 60.0) -> ToolResult:
-        pending = self._pending.get(held.delegation_id or "")
+        # After close() every hold is gone, so this returns unknown_hold.
+        pending = None if self._closed else self._pending.get(held.delegation_id or "")
         if pending is not None and pending.delegation_id in self._waiting:
             # Someone is already waiting on this hold; that wait decides it. Not a rejection.
             return held.model_copy(
@@ -257,10 +261,15 @@ class GovernedGateway:
             )
         # No await between the check above and this claim, so two waits can't both pass.
         self._waiting.add(pending.delegation_id)
+        task = asyncio.current_task()
+        if task is not None:
+            self._wait_tasks.add(task)
         try:
             return await self._wait_claimed(pending, timeout_s)
         finally:
             self._waiting.discard(pending.delegation_id)
+            if task is not None:
+                self._wait_tasks.discard(task)
 
     async def _wait_claimed(self, pending: _Pending, timeout_s: float) -> ToolResult:
         verdict = Verdict(
@@ -338,6 +347,14 @@ class GovernedGateway:
         )
 
     async def close(self) -> None:
+        """Hang-up: holds are invalidated and outstanding waits stop polling before the MCP
+        connection and the ArmorIQ session go, so no approval is consumed for a dead call."""
+        self._closed = True
+        self._pending.clear()
+        others = [t for t in self._wait_tasks if t is not asyncio.current_task()]
+        for task in others:
+            task.cancel()
+        await asyncio.gather(*others, return_exceptions=True)
         try:
             await self._executor.close()
         finally:
