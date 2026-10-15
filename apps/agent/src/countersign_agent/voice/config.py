@@ -30,7 +30,9 @@ class AgentSettings(BaseSettings):
     gemini_api_key: str = ""
     gemini_model: str = "gemini-3.8-flash"
     # Used only when the primary model is rate limited or unavailable; every turn records
-    # which model answered, so a switch is never silent.
+    # which model answered, so a switch is never silent. Set GEMINI_FALLBACK_MODEL= (empty)
+    # to pin one model, e.g. for with/without-ArmorIQ eval runs that must use the same model:
+    # then a failing primary fails the turn loudly instead of switching.
     gemini_fallback_model: str | None = "gemini-3.5-flash"
     # Rate-limit retries on one model before moving to the next.
     gemini_rate_limit_retries: int = 2

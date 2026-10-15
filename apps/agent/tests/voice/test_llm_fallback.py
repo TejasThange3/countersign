@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 from countersign_agent.voice import llm as llm_module
+from countersign_agent.voice.config import AgentSettings
 from countersign_agent.voice.llm import FallbackGoogleLLMService
 from google.genai.errors import APIError
 from pipecat.processors.aggregators.llm_context import LLMContext
@@ -24,7 +25,9 @@ def clear_cooldowns() -> Iterator[None]:
 
 
 def make_service(
-    monkeypatch: pytest.MonkeyPatch, behaviour: dict[str, list[Any]]
+    monkeypatch: pytest.MonkeyPatch,
+    behaviour: dict[str, list[Any]],
+    fallback: str | None = FALLBACK,
 ) -> tuple[FallbackGoogleLLMService, list[str]]:
     """`behaviour[model]` is consumed one entry per request: an int is an API error code,
     "stall" never sends a chunk, anything else is streamed as the only chunk."""
@@ -43,7 +46,7 @@ def make_service(
     service = FallbackGoogleLLMService(
         api_key="fake-key",
         settings=GoogleLLMService.Settings(model=PRIMARY),
-        fallback_model=FALLBACK,
+        fallback_model=fallback,
         rate_limit_retries=2,
         backoff_s=0.0,
         first_chunk_timeout_s=0.1,
@@ -114,3 +117,22 @@ async def test_everything_failing_raises_last_error(monkeypatch: pytest.MonkeyPa
     service, _requested = make_service(monkeypatch, {PRIMARY: [503], FALLBACK: [503]})
     with pytest.raises(APIError):
         await collect(service)
+
+
+async def test_empty_fallback_pins_the_model_and_fails_loudly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # GEMINI_FALLBACK_MODEL= (empty) is how eval runs pin one model.
+    service, requested = make_service(monkeypatch, {PRIMARY: [503, "hi"]}, fallback="")
+    with pytest.raises(APIError):
+        await collect(service)
+    assert requested == [PRIMARY]
+    # The pinned model is never skipped for cooldown: it is the only option.
+    chunks, used = await collect(service)
+    assert chunks == ["hi"] and used == [PRIMARY]
+
+
+def test_empty_env_value_disables_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GEMINI_FALLBACK_MODEL", "")
+    settings = AgentSettings(_env_file=None)  # type: ignore[call-arg]  # pydantic-settings kwarg
+    assert not settings.gemini_fallback_model
