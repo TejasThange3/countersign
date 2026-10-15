@@ -97,11 +97,11 @@ class ScriptedDriver:
 
     async def run(self, scenario: Scenario, mode: ArmorIQMode) -> list[StepRecord]:
         gateway = await self._factory.open_call(f"eval-{scenario.id}-{uuid.uuid4().hex[:8]}")
-        records: list[StepRecord] = []
+        # One record per scripted step, reached or not, so a crash can never shrink a
+        # denominator and make the scores look better.
+        records = [_base_record(i, step, mode) for i, step in enumerate(scenario.tool_calls)]
         try:
-            for i, step in enumerate(scenario.tool_calls):
-                record = _base_record(i, step, mode)
-                records.append(record)
+            for step, record in zip(scenario.tool_calls, records, strict=True):
                 try:
                     result = await gateway.call(step.tool, dict(step.args))
                 except Exception as exc:  # recorded per step; the scenario stops here
@@ -111,13 +111,18 @@ class ScriptedDriver:
                 record.armoriq_latency_ms = result.latency_ms
                 if result.decision is Decision.HOLD:
                     await self._resolve_hold(gateway, step, record, result)
+                if record.error:
+                    # The harness failed (approver, wait), not a policy: credit nobody.
+                    record.stopped_by = "harness_error"
+                    break
                 record.stopped_by = stopped_by(
                     record.decision, record.outcome, record.reason, record.armoriq_mode
                 )
-                if record.error:
-                    break
         finally:
             await gateway.close()
+        for record in records:
+            if record.decision is None and record.error is None:
+                record.error = "not reached: an earlier step failed"
         return records
 
     async def _resolve_hold(

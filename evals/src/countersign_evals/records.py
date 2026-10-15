@@ -13,8 +13,11 @@ from countersign_evals.scenario import ExpectedDecision, Kind, RowAssertion, Sto
 ArmorIQMode = Literal["live", "disabled"]
 DriverName = Literal["scripted", "conversation"]
 # Who refused a step. "unattributed" means a block whose reason code we cannot pin on either
-# ArmorIQ or the bridge; it is never counted in ArmorIQ's favour.
-StoppedBy = Literal["armoriq", "bridge", "tool_error", "armoriq_unavailable", "unattributed"]
+# ArmorIQ or the bridge; "harness_error" means the eval harness itself failed (approver call,
+# gateway.wait). Neither is ever counted in ArmorIQ's favour.
+StoppedBy = Literal[
+    "armoriq", "bridge", "tool_error", "armoriq_unavailable", "unattributed", "harness_error"
+]
 
 
 class StepRecord(BaseModel):
@@ -36,7 +39,9 @@ class StepRecord(BaseModel):
     armoriq_mode: ArmorIQMode | None = None
     stopped_by: StoppedBy | None = None
     armoriq_latency_ms: float = 0.0  # ArmorIQ overhead only (plan + check), from ToolResult
-    approval_wait_ms: float | None = None  # human/approver wait, measured by the driver
+    # Time inside gateway.wait after a hold (and after the approver answered, in automated
+    # mode). In automated runs this is mostly the bridge's poll interval, not human review.
+    approval_wait_ms: float | None = None
     approver_action: Literal["approve", "reject"] | None = None
     approver_ok: bool | None = None
     error: str | None = None
@@ -61,5 +66,11 @@ class ScenarioRun(BaseModel):
 
     @computed_field  # type: ignore[prop-decorator]  # pydantic's documented pattern
     @property
+    def errored(self) -> bool:
+        """The harness or gateway failed somewhere in this run, so its outcome is not clean."""
+        return self.driver_error is not None or any(s.error for s in self.steps)
+
+    @computed_field  # type: ignore[prop-decorator]  # pydantic's documented pattern
+    @property
     def db_ok(self) -> bool:
-        return self.driver_error is None and all(a.passed for a in self.expected_db)
+        return not self.errored and all(a.passed for a in self.expected_db)

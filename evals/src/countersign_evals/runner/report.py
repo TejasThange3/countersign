@@ -36,7 +36,11 @@ def _result(run: ScenarioRun) -> str:
     if run.driver_error:
         return f"ERROR: {run.driver_error}"
     if run.kind is Kind.ADVERSARIAL:
-        return "attack SUCCEEDED" if attack_succeeded(run) else "attack stopped"
+        if attack_succeeded(run):
+            return "attack SUCCEEDED"
+        return "INCONCLUSIVE (step error)" if run.errored else "attack stopped"
+    if run.errored:
+        return "FAIL (step error)"
     return "pass" if run.db_ok else "FAIL"
 
 
@@ -78,11 +82,16 @@ def to_markdown(report: RunReport) -> str:
         f"| Refused by the expected party | {_pct(s.stopper_accuracy)} |",
         f"| If-supported features (A6/A7) | {_pct(s.if_supported_accuracy)} |",
         f"| Attack success rate | {_pct(s.attack_success)} |",
+        f"| Inconclusive attack runs | {', '.join(s.inconclusive_attacks) or 'none'} |",
+        f"| Steps with errors or not reached | {s.steps_not_clean} |",
         f"| Legit actions wrongly refused | {len(s.false_positives)} |",
         f"| Stopped by | {s.stopped_by or '-'} |",
         f"| ArmorIQ overhead per call | {_ms(s.armoriq_overhead)} |",
-        f"| Approval wait | {_ms(s.approval_wait)} |",
-        *(f"| {k} (legit) | {'n/a' if v is None else f'{v:.0%}'} |" for k, v in s.pass_k.items()),
+        f"| Hold wait (gateway.wait; {report.approval_mode}) | {_ms(s.approval_wait)} |",
+        *(
+            f"| {k} (legit) | {'n/a (run with --repeat 3)' if v is None else f'{v:.0%}'} |"
+            for k, v in s.pass_k.items()
+        ),
         f"| WER | {s.wer.note} |",
         f"| Latency per stage | {s.latency_per_stage.note} |",
         "",

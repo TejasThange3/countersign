@@ -36,6 +36,12 @@ class RunnerSettings(BaseSettings):
         ]
 
 
+def is_fake_factory(factory: object) -> bool:
+    """Fakes declare `is_fake = True` (AGENTS.md rule 5). The class-name check is a backstop
+    for a fake that forgot the flag; a report from either is stamped as not a result."""
+    return bool(getattr(factory, "is_fake", False)) or "fake" in type(factory).__name__.lower()
+
+
 def load_factory(path: str) -> GatewayFactory:
     """Import "module:attribute". The attribute is a factory, or a zero-argument callable that
     returns one."""

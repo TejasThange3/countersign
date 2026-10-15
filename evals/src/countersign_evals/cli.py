@@ -14,6 +14,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import httpx
+from sqlalchemy.engine import make_url
 
 from countersign_evals.approver import Approver, load_approver_settings
 from countersign_evals.records import ArmorIQMode
@@ -21,8 +22,15 @@ from countersign_evals.runner.db import CommandReset, PostgresProbe
 from countersign_evals.runner.drivers import ConversationDriver, Driver, ScriptedDriver
 from countersign_evals.runner.report import REPORTS_DIR, write_report
 from countersign_evals.runner.run import run_all
-from countersign_evals.runner.settings import RunnerSettings, load_factory
+from countersign_evals.runner.settings import (
+    REPO_ROOT,
+    RunnerSettings,
+    is_fake_factory,
+    load_factory,
+)
 from countersign_evals.scenario import load_all
+
+LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -42,6 +50,11 @@ def _parser() -> argparse.ArgumentParser:
     )
     run.add_argument("--driver", choices=["scripted", "conversation"], default="scripted")
     run.add_argument("--out", type=Path, default=REPORTS_DIR)
+    run.add_argument(
+        "--allow-remote-db",
+        action="store_true",
+        help="allow DATABASE_URL to point somewhere other than localhost (it gets wiped)",
+    )
     return parser
 
 
@@ -60,6 +73,15 @@ async def _run(args: argparse.Namespace) -> int:
             print(f"Unknown scenario ids: {sorted(missing)}", file=sys.stderr)
             return 2
 
+    host = make_url(settings.database_url).host
+    if host not in LOCAL_HOSTS and not args.allow_remote_db:
+        print(
+            f"Refusing to reset a non-local database ({host}): every scenario wipes it. "
+            "Pass --allow-remote-db if that is really what you want.",
+            file=sys.stderr,
+        )
+        return 2
+
     probe = PostgresProbe.from_url(settings.database_url)
     async with httpx.AsyncClient() as http:
         approver = None
@@ -71,7 +93,7 @@ async def _run(args: argparse.Namespace) -> int:
             fake = False
         else:
             factory = load_factory(settings.gateway_factory)
-            fake = "fake" in type(factory).__name__.lower()
+            fake = is_fake_factory(factory)
             driver = ScriptedDriver(
                 factory, approver, settings.gateway_factory, settings.approval_wait_timeout_s
             )
@@ -79,7 +101,7 @@ async def _run(args: argparse.Namespace) -> int:
             report = await run_all(
                 scenarios,
                 driver,
-                CommandReset(settings.reset_command()),
+                CommandReset(settings.reset_command(), settings.database_url, REPO_ROOT),
                 probe,
                 mode,
                 approval_mode="automated" if approver else "supervised",

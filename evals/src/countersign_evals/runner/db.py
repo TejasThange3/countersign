@@ -7,9 +7,11 @@ path a developer uses), and the probe only selects from the tables in TABLE_COLU
 from __future__ import annotations
 
 import asyncio
+import os
 from collections.abc import Mapping, Sequence
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 from typing import Any, Protocol
 
 from sqlalchemy import bindparam, text
@@ -31,16 +33,32 @@ class DbProbe(Protocol):
 class CommandReset:
     """Runs a reset command (default: `hotel-mcp reset --yes` in apps/mcp-server)."""
 
-    def __init__(self, command: Sequence[str], timeout_s: float = 120.0) -> None:
+    def __init__(
+        self,
+        command: Sequence[str],
+        database_url: str | None = None,
+        cwd: Path | None = None,
+        timeout_s: float = 120.0,
+    ) -> None:
         self.command = list(command)
+        self.database_url = database_url
+        self.cwd = cwd
         self.timeout_s = timeout_s
 
     async def reset(self) -> None:
+        # Pass the probe's DATABASE_URL explicitly: hotel-mcp reads its own .env relative to
+        # its working directory, so without this the reset could wipe a different database
+        # from the one the probe then scores.
+        env = dict(os.environ)
+        if self.database_url is not None:
+            env["DATABASE_URL"] = self.database_url
         # Fixed argv from settings, no shell, so nothing from a scenario reaches the command.
         proc = await asyncio.create_subprocess_exec(
             *self.command,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
+            env=env,
+            cwd=self.cwd,
         )
         try:
             out, _ = await asyncio.wait_for(proc.communicate(), self.timeout_s)

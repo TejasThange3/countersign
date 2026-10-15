@@ -215,6 +215,8 @@ class FakeGateway:
 
 
 class FakeGatewayFactory:
+    is_fake = True  # stamps any report from it as not a result (AGENTS.md rule 5)
+
     def __init__(
         self,
         db: FakeHotelDb,

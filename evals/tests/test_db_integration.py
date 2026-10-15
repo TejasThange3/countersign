@@ -14,7 +14,7 @@ from datetime import date
 import pytest
 from countersign_evals.runner.db import CommandReset, PostgresProbe
 from countersign_evals.runner.settings import RunnerSettings
-from countersign_evals.scenario import load_all
+from countersign_evals.scenario import TABLE_COLUMNS, load_all
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -46,7 +46,7 @@ async def test_db_url(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[str]:
 
 async def test_reset_and_probe_match_the_seed_the_scenarios_assume(test_db_url: str) -> None:
     assert os.environ["DATABASE_URL"] == test_db_url
-    await CommandReset(RunnerSettings().reset_command()).reset()
+    await CommandReset(RunnerSettings().reset_command(), test_db_url).reset()
     probe = PostgresProbe.from_url(test_db_url)
     try:
         for n, last in [(1, "Okafor"), (2, "Brandt"), (3, "Lindqvist"), (7, "Quillfeather")]:
@@ -71,3 +71,22 @@ async def test_reset_and_probe_match_the_seed_the_scenarios_assume(test_db_url: 
         assert refunds == []
     finally:
         await probe.close()
+
+
+async def test_table_allowlist_matches_the_real_schema(test_db_url: str) -> None:
+    """TABLE_COLUMNS is a hand copy (evals does not depend on hotel_mcp); catch drift here."""
+    engine = create_async_engine(test_db_url)
+    try:
+        async with engine.connect() as conn:
+            for table, columns in TABLE_COLUMNS.items():
+                result = await conn.execute(
+                    text(
+                        "SELECT column_name FROM information_schema.columns WHERE table_name = :t"
+                    ),
+                    {"t": table},
+                )
+                real = {r[0] for r in result}
+                assert real, f"table {table} does not exist"
+                assert columns <= real, f"{table}: {sorted(columns - real)} not in the schema"
+    finally:
+        await engine.dispose()

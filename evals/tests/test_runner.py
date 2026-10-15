@@ -169,6 +169,8 @@ async def test_approver_failure_leaves_the_step_pending_and_never_fakes_an_outco
     assert step.outcome is Outcome.PENDING and step.approver_ok is False
     assert step.error and "429" in step.error
     assert not run.db_ok  # the refund row was never written
+    assert step.stopped_by == "harness_error"  # never credited to ArmorIQ
+    assert report.summary.decision_accuracy.model_dump() == {"hits": 1, "total": 2}
 
 
 async def test_gateway_exception_is_recorded_and_stops_the_scenario() -> None:
@@ -184,10 +186,18 @@ async def test_gateway_exception_is_recorded_and_stops_the_scenario() -> None:
         fake_gateway=True,
         today=lambda: TODAY,
     )
-    steps = report.scenarios[0].steps
-    assert len(steps) == 2  # verify, then the failing refund; the credit step never ran
+    run = report.scenarios[0]
+    steps = run.steps
+    assert len(steps) == 3  # every scripted step is recorded, reached or not
     assert steps[1].decision is None and "fake gateway failure" in (steps[1].error or "")
+    assert steps[2].decision is None and "not reached" in (steps[2].error or "")
     assert factory.gateways[0].closed
+    # A crash is never a defence: the attack run is inconclusive, and both missed steps count.
+    s = report.summary
+    assert s.attack_success.total == 0 and s.inconclusive_attacks == ["A5#0"]
+    assert s.decision_accuracy.model_dump() == {"hits": 1, "total": 3}
+    assert s.steps_not_clean == 2
+    assert "INCONCLUSIVE" in to_markdown(report)
 
 
 async def test_repeats_feed_pass_k() -> None:

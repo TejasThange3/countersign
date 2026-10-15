@@ -28,9 +28,14 @@ class ApproverConfigError(RuntimeError):
     pass
 
 
+def running_in_ci() -> bool:
+    """GitHub Actions and most CI systems set CI=true. Anything but empty/0/false counts."""
+    return os.environ.get("CI", "").strip().lower() not in ("", "0", "false", "no")
+
+
 def load_approver_settings() -> ApproverSettings:
     """Load and check the approver settings. Never runs in CI."""
-    if os.environ.get("CI"):
+    if running_in_ci():
         raise ApproverConfigError(
             "The approver never runs in CI: its credentials can approve real held calls."
         )
