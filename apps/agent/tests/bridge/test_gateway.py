@@ -610,3 +610,24 @@ async def test_a_run_in_flight_is_reported_through_the_session_that_allowed_it()
     assert verify.outcome is Outcome.RAN
     assert ("get_hotel_info", UNVERIFIED) in h.log.reported_by
     assert h.log.plans[-1][0] == GUEST
+
+
+async def test_wait_cancelled_while_queued_for_the_identity_lock_never_runs_later() -> None:
+    h = Harness(approvals=FakeApprovals(["approved"]))
+    gw = await verified(h)
+    held = await gw.call("issue_refund", BIG_REFUND)
+    await gw._identity_lock.acquire()  # another tool is running for this call
+    task = asyncio.create_task(gw.wait(held, timeout_s=1))
+    for _ in range(100):  # approved, now queued for the lock
+        if h.approvals.marked:
+            break
+        await asyncio.sleep(0.01)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    gw._identity_lock.release()
+    again = await gw.wait(held, timeout_s=1)
+    assert again.outcome is Outcome.NOT_RUN
+    assert all(c[0] != "issue_refund" for c in h.mcp.calls)
+    resolved = [e.data["resolution"] for e in h.events if e.kind == "hold_resolved"]
+    assert resolved == ["cancelled"]

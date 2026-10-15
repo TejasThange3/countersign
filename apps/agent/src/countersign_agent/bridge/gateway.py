@@ -290,7 +290,15 @@ class GovernedGateway:
             # The hold leaves _pending only once the lock is held, so no verify_guest can
             # re-plan between the approval and the run, and the run is reported through the
             # session that asked for it.
-            async with self._identity_lock:
+            try:
+                await self._identity_lock.acquire()
+            except asyncio.CancelledError:
+                # Hung up while another tool held the lock: the approved tool never runs, and
+                # a later wait() can't run it either.
+                self._pending.pop(pending.delegation_id, None)
+                await self._emit("hold_resolved", {**hold_data, "resolution": "cancelled"})
+                raise
+            try:
                 self._pending.pop(pending.delegation_id, None)
                 await self._emit("hold_resolved", {**hold_data, "resolution": approval})
                 verdict.reason = "approved"
@@ -301,6 +309,8 @@ class GovernedGateway:
                     pending.plan_id,
                     pending.delegation_id,
                 )
+            finally:
+                self._identity_lock.release()
         self._pending.pop(pending.delegation_id, None)
         await self._emit("hold_resolved", {**hold_data, "resolution": approval})
         verdict.reason = approval  # rejected | timeout
