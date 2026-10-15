@@ -39,6 +39,9 @@ class AgentSettings(BaseSettings):
     gemini_rate_limit_backoff_s: float = 2.0
     # A model that accepts a request but streams nothing for this long is skipped.
     gemini_first_chunk_timeout_s: float = 10.0
+    # The last model left (or the only one, when pinned) waits this long instead: silence is
+    # worse than a slow answer.
+    gemini_last_model_timeout_s: float = 30.0
     # After a failure, skip that model (unless it's the only option) for this long. 0 = never.
     gemini_model_cooldown_s: float = 120.0
 

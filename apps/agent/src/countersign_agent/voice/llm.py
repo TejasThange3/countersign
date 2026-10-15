@@ -57,6 +57,7 @@ class FallbackGoogleLLMService(GoogleLLMService):
         rate_limit_retries: int = 2,
         backoff_s: float = 2.0,
         first_chunk_timeout_s: float = 10.0,
+        last_model_timeout_s: float = 30.0,
         cooldown_s: float = 120.0,
         **kwargs: Any,
     ) -> None:
@@ -68,6 +69,8 @@ class FallbackGoogleLLMService(GoogleLLMService):
         self._rate_limit_retries = rate_limit_retries
         self._backoff_s = backoff_s
         self._first_chunk_timeout_s = first_chunk_timeout_s
+        # With nothing left to switch to, a slow answer beats silence (seen live: 28 s).
+        self._last_model_timeout_s = max(last_model_timeout_s, first_chunk_timeout_s)
         self._cooldown_s = cooldown_s
         self.on_model_used: ModelListener | None = None
 
@@ -90,7 +93,12 @@ class FallbackGoogleLLMService(GoogleLLMService):
                     self._settings.model = model
                     async with aclosing(super()._stream_response(context)) as stream:
                         try:
-                            async with asyncio.timeout(self._first_chunk_timeout_s):
+                            wait = (
+                                self._last_model_timeout_s
+                                if is_last
+                                else self._first_chunk_timeout_s
+                            )
+                            async with asyncio.timeout(wait):
                                 first = await anext(stream)
                         except StopAsyncIteration:
                             await self._report_model(model, primary)

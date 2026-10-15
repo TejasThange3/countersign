@@ -41,6 +41,8 @@ def make_service(
             raise APIError(outcome, {"error": {"message": "fake", "status": "FAKE"}})
         if outcome == "stall":
             await asyncio.sleep(10)
+        elif outcome == "slow":
+            await asyncio.sleep(0.3)  # past first_chunk_timeout_s, within last_model_timeout_s
         yield outcome
 
     service = FallbackGoogleLLMService(
@@ -50,6 +52,7 @@ def make_service(
         rate_limit_retries=2,
         backoff_s=0.0,
         first_chunk_timeout_s=0.1,
+        last_model_timeout_s=1.0,
     )
     monkeypatch.setattr(GoogleLLMService, "_stream_response", fake_stream)
     return service, requested
@@ -98,6 +101,15 @@ async def test_silent_primary_times_out_to_fallback(monkeypatch: pytest.MonkeyPa
     service, _requested = make_service(monkeypatch, {PRIMARY: ["stall"], FALLBACK: ["hi"]})
     chunks, used = await collect(service)
     assert chunks == ["hi"] and used == [FALLBACK]
+
+
+async def test_last_model_gets_the_longer_wait(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Both slow: the primary is abandoned at the short limit, the fallback (nothing left to
+    # switch to) is allowed the long one and answers.
+    service, requested = make_service(monkeypatch, {PRIMARY: ["slow"], FALLBACK: ["slow"]})
+    chunks, used = await collect(service)
+    assert requested == [PRIMARY, FALLBACK]
+    assert chunks == ["slow"] and used == [FALLBACK]
 
 
 async def test_failed_primary_is_skipped_during_cooldown(monkeypatch: pytest.MonkeyPatch) -> None:
