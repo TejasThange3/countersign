@@ -285,6 +285,10 @@ def _refused(held: ToolResult, reason: str) -> ToolResult:
     )
 
 
+# Reasons meaning "no manager answered": the bridge's timeout, the fake's, and the router's own.
+_NO_ANSWER_REASONS = {"timeout", "approval_timeout", "hold_wait_overrun", "hold_wait_error"}
+
+
 def hold_outcome_message(
     tool: str, result: ToolResult, *, interrupted: bool = False
 ) -> dict[str, str]:
@@ -305,11 +309,17 @@ def hold_outcome_message(
         status = "approved, but the action itself FAILED"
     elif result.reason == "rejected":
         status = "DECLINED by the manager, so nothing was done"
-    else:
-        # A timeout (or a failed wait) is not a manager's "no": nobody decided.
+    elif result.reason in _NO_ANSWER_REASONS:
+        # A timeout (or a wait that never answered) is not a manager's "no": nobody decided.
         status = (
             "NOT decided in time because no manager could be reached, so nothing was done. "
             "Say you couldn't reach a manager in time; do not say it was declined"
+        )
+    else:
+        # Any other refusal is a system problem, not a manager's decision.
+        status = (
+            "NOT completed because of a system problem, so nothing was done. "
+            "Say it couldn't be done right now; do not say a manager declined it"
         )
     return {
         "role": "developer",

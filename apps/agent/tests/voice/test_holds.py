@@ -245,6 +245,8 @@ async def test_fake_verify_only_accepts_seed_identities() -> None:
         ("timeout", "couldn't reach a manager in time", "DECLINED"),  # the bridge's reason
         ("approval_timeout", "couldn't reach a manager in time", "DECLINED"),
         ("hold_wait_error", "couldn't reach a manager in time", "DECLINED"),
+        ("hold_wait_overrun", "couldn't reach a manager in time", "DECLINED"),
+        ("approval_error", "system problem", "in time"),  # bridge: the wait itself failed
     ],
 )
 def test_outcome_wording_separates_a_no_from_no_answer(
