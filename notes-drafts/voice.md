@@ -54,6 +54,10 @@ answers the same questions by chat instead of by phone: same brain, same hatch, 
   pending, another call to the same tool *name* (any arguments, so 250 vs 250.0 can't slip
   through) gets "STILL_WAITING" and never reaches the gateway. `close()` (hangup) cancels every
   wait before the gateway closes.
+- **A late outcome waits its turn.** If the manager decides while the caller is talking, the
+  outcome goes into the context at once but nothing is spoken until the caller's turn ends;
+  the reply then answers their words and the outcome together (several outcomes coalesce into
+  one reply). `PipelineCallOutput.watch_caller_turns` follows the user aggregator's turn events.
 - **Talking over the bot never loses an action.** Pipecat cancels a tool handler on barge-in.
   For acting tools (anything not a read) the gateway call runs in a router-owned task behind
   `asyncio.shield`, so it finishes anyway; its outcome is added to the context afterwards with

@@ -8,8 +8,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import date
+from typing import Any
 
-from pipecat.frames.frames import LLMMessagesAppendFrame, TTSSpeakFrame
+from pipecat.frames.frames import LLMMessagesAppendFrame, LLMRunFrame, TTSSpeakFrame
 from pipecat.pipeline.worker import PipelineWorker
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import (
@@ -77,6 +78,12 @@ class PipelineCallOutput:
 
     def __init__(self) -> None:
         self.worker: PipelineWorker | None = None
+        # Turn-taking for late outcomes: a hold decided while the caller is talking must not
+        # make the bot talk over them. The outcome goes into the context at once, but the
+        # inference that speaks it waits for the caller's turn to end.
+        self.caller_speaking = False
+        # Outcome messages added during the caller's turn that no inference has seen yet.
+        self._unspoken: list[dict[str, str]] = []
 
     async def say(self, text: str) -> None:
         await self._queue(TTSSpeakFrame(text))
@@ -88,9 +95,40 @@ class PipelineCallOutput:
         self, tool: str, result: ToolResult, *, interrupted: bool = False
     ) -> None:
         message = hold_outcome_message(tool, result, interrupted=interrupted)
+        if self.caller_speaking:
+            # Several outcomes during one caller turn coalesce into one inference later.
+            self._unspoken.append(message)
+            await self._queue(LLMMessagesAppendFrame(messages=[message], run_llm=False))
+            return
+        # (A turn that has just begun may not have flagged `caller_speaking` yet: Pipecat
+        # interrupts first and runs the turn handlers as tasks. Its interruption cancels
+        # this reply too, so the window is harmless.)
         await self._queue(LLMMessagesAppendFrame(messages=[message], run_llm=True))
 
-    async def _queue(self, frame: TTSSpeakFrame | LLMMessagesAppendFrame) -> None:
+    def watch_caller_turns(self, user_aggregator: Any) -> None:
+        """Follow the caller's turns from the user context aggregator's events."""
+
+        @user_aggregator.event_handler("on_user_turn_started")
+        async def _started(_aggregator: Any, _strategy: Any) -> None:
+            self.caller_speaking = True
+
+        @user_aggregator.event_handler("on_user_turn_message_added")
+        async def _message_added(aggregator: Any, _message: Any) -> None:
+            # The caller's words were just written to the context, and that write runs an
+            # inference. It answers the outcomes too, but only those already in the context
+            # before the words (the append is queued, so in a race it can land later).
+            earlier = aggregator.context.get_messages()[:-1]
+            self._unspoken = [m for m in self._unspoken if m not in earlier]
+
+        @user_aggregator.event_handler("on_user_turn_stopped")
+        async def _stopped(_aggregator: Any, _strategy: Any, _message: Any) -> None:
+            self.caller_speaking = False
+            if self._unspoken:
+                # No inference has seen these (a wordless turn, or the race above).
+                self._unspoken = []
+                await self._queue(LLMRunFrame())
+
+    async def _queue(self, frame: TTSSpeakFrame | LLMMessagesAppendFrame | LLMRunFrame) -> None:
         if self.worker is None:
             raise RuntimeError("call output used before the pipeline started")
         await self.worker.queue_frame(frame)
@@ -127,6 +165,7 @@ class CallCore:
         )
         # Audio mode passes VAD params here; text mode has no audio to detect turns in.
         self.aggregators = LLMContextAggregatorPair(self.context, user_params=user_params)
+        output.watch_caller_turns(self.aggregators.user())
 
     async def close(self) -> None:
         """Hang up: cancel pending holds first so no held tool runs, then close the gateway."""

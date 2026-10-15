@@ -40,6 +40,7 @@ class FakeScriptedLLM(LLMService):
         self._script = script
         self.seen_tool_names: list[list[str]] = []
         self.inferences = 0
+        self.seen_messages: list[list[dict[str, Any]]] = []
 
     async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)
@@ -53,7 +54,9 @@ class FakeScriptedLLM(LLMService):
         tools = context.tools
         names = [t.name for t in tools.standard_tools] if hasattr(tools, "standard_tools") else []
         self.seen_tool_names.append(names)
-        step = self._script([dict(m) for m in context.get_messages()])
+        messages = [dict(m) for m in context.get_messages()]
+        self.seen_messages.append(messages)
+        step = self._script(messages)
         await self.push_frame(LLMFullResponseStartFrame())
         await self.start_ttfb_metrics()
         if step.text:
