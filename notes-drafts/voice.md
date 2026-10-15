@@ -20,11 +20,23 @@ answers the same questions by chat instead of by phone: same brain, same hatch, 
   has finished their turn. *Barge-in* is the caller talking over the bot: VAD start triggers an
   interruption that drops queued audio and cancels the running reply. This is the receptionist's
   ears, brain and mouth.
-- **STT** is local **faster-whisper** (`distil-medium.en`, about 400 MB, chosen because the dev
-  machine is short on RAM; set `WHISPER_MODEL=distil-large-v3` for better accuracy) on the RTX
-  4060, so listening costs no credits. Faster-whisper loaded CUDA with no extra DLL setup, because torch ships the CUDA
-  libraries. `STT_PROVIDER=elevenlabs` switches to ElevenLabs Scribe. **TTS** is ElevenLabs
-  `eleven_flash_v2_5`.
+- **STT** is local **faster-whisper** (`distil-large-v3`) on the RTX 4060, so listening costs
+  no credits. Chosen by measurement: on the same recorded call it heard "My booking reference
+  is LRK 1001. Last name, Okafor." exactly, where `distil-medium.en` lost the name. A *prompt*
+  (domain text given to Whisper first) made things worse (it cut sentences short, and once
+  returned nothing), so it is off by default. The agent reads booking references back instead.
+  Faster-whisper loaded CUDA with no extra DLL setup, because torch ships the CUDA libraries.
+  `STT_PROVIDER=elevenlabs` switches to ElevenLabs Scribe.
+- **TTS** is ElevenLabs `eleven_flash_v2_5` (about 0.2–0.9 s to first audio). `eleven_v4_turbo`
+  can't be used live: ElevenLabs only accepts it on its text-to-dialogue websocket, which
+  Pipecat 1.12 doesn't support.
+- **Barge-in tuning** (`voice/vad.py`). Silero VAD counts speech when confidence ≥ 0.7 and
+  loudness ≥ `VAD_MIN_VOLUME`. Pipecat's default loudness floor (0.6) missed "Actually, wait"
+  on laptop speakers, because echo cancellation turns the caller down while the bot talks. At
+  0.4 it works at normal volume. Measured: the bot's own echo never passed 0.67 confidence
+  (most seconds under 0.3), while the caller talking over it scored 0.94–0.99, so the 0.7
+  confidence gate is what stops the bot interrupting itself. The VAD logs its peak values each
+  second there is speech-like audio, so tuning uses numbers, not guesses.
 - **Tools come only from the gateway.** `voice/tools.py` turns each `ToolSpec` from
   `gateway.tool_specs()` into a Pipecat `FunctionSchema`. Every one has the same handler,
   `ToolRouter.handle`, which calls `gateway.call(...)`. There is no other path to a tool: this is
