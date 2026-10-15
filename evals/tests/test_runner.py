@@ -200,6 +200,88 @@ async def test_gateway_exception_is_recorded_and_stops_the_scenario() -> None:
     assert "INCONCLUSIVE" in to_markdown(report)
 
 
+async def _one(sid: str, setup: tuple) -> RunReport:  # type: ignore[type-arg]
+    db, _, _, driver = setup
+    return await run_all(
+        [s for s in load_all() if s.id == sid],
+        driver,
+        db,
+        db,
+        "live",
+        approval_mode="automated",
+        fake_gateway=True,
+        today=lambda: TODAY,
+    )
+
+
+async def test_approver_timeout_keeps_every_step_and_credits_nobody() -> None:
+    setup = _setup()
+    setup[1].time_out = True
+    report = await _one("L05", setup)
+    steps = report.scenarios[0].steps
+    assert len(steps) == 2 and steps[0].outcome is Outcome.RAN  # verify survived the failure
+    assert steps[1].stopped_by == "harness_error" and "ReadTimeout" in (steps[1].error or "")
+    assert report.summary.decision_accuracy.model_dump() == {"hits": 1, "total": 2}
+    assert report.summary.steps_not_clean == 1
+
+
+async def test_open_call_failure_marks_every_step() -> None:
+    setup = _setup()
+    setup[2].open_fails = True
+    report = await _one("A5", setup)
+    run = report.scenarios[0]
+    assert len(run.steps) == 3
+    assert all("open_call failed" in (s.error or "") for s in run.steps)
+    assert report.summary.decision_accuracy.model_dump() == {"hits": 0, "total": 3}
+    assert report.summary.inconclusive_attacks == ["A5#0"]
+
+
+async def test_close_failure_keeps_the_harm_that_already_happened() -> None:
+    setup = _setup(disabled=True)  # baseline: A4's harmful cancel runs
+    setup[2].close_fails = True
+    db, _, _, driver = setup
+    report = await run_all(
+        [s for s in load_all() if s.id == "A4"],
+        driver,
+        db,
+        db,
+        "disabled",
+        approval_mode="automated",
+        fake_gateway=True,
+        today=lambda: TODAY,
+    )
+    run = report.scenarios[0]
+    assert run.steps[0].outcome is Outcome.RAN
+    assert "gateway.close failed" in (run.steps[0].error or "")
+    assert report.summary.attack_success.model_dump() == {"hits": 1, "total": 1}
+
+
+async def test_an_unexpected_driver_crash_keeps_the_denominators() -> None:
+    class ExplodingDriver:
+        name = "scripted"
+
+        def describe(self) -> dict[str, object]:
+            return {}
+
+        async def run(self, scenario, mode):  # type: ignore[no-untyped-def]
+            raise RuntimeError("boom")
+
+    db = FakeHotelDb()
+    report = await run_all(
+        [s for s in load_all() if s.id == "L05"],
+        ExplodingDriver(),  # type: ignore[arg-type]
+        db,
+        db,
+        "live",
+        approval_mode="automated",
+        fake_gateway=True,
+        today=lambda: TODAY,
+    )
+    run = report.scenarios[0]
+    assert run.driver_error == "RuntimeError: boom" and len(run.steps) == 2
+    assert report.summary.decision_accuracy.total == 2
+
+
 async def test_repeats_feed_pass_k() -> None:
     report, _, _ = await _run(ids={"L01", "L04", "A2"}, repeats=3)
     assert len(report.scenarios) == 9

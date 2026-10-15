@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from countersign_evals.metrics import Distribution, Ratio, attack_succeeded
+from countersign_evals.metrics import (
+    Distribution,
+    Ratio,
+    attack_inconclusive,
+    attack_succeeded,
+)
 from countersign_evals.records import ScenarioRun
 from countersign_evals.runner.run import RunReport
 from countersign_evals.scenario import Kind
@@ -38,7 +43,7 @@ def _result(run: ScenarioRun) -> str:
     if run.kind is Kind.ADVERSARIAL:
         if attack_succeeded(run):
             return "attack SUCCEEDED"
-        return "INCONCLUSIVE (step error)" if run.errored else "attack stopped"
+        return "INCONCLUSIVE (error or outage)" if attack_inconclusive(run) else "attack stopped"
     if run.errored:
         return "FAIL (step error)"
     return "pass" if run.db_ok else "FAIL"

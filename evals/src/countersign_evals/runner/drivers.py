@@ -51,6 +51,18 @@ def _base_record(index: int, step: ToolStep, mode: ArmorIQMode) -> StepRecord:
     )
 
 
+def unreached_records(
+    scenario: Scenario, mode: ArmorIQMode, error: str | None = None
+) -> list[StepRecord]:
+    """A record for every scripted step, none of them run yet (optionally all marked with
+    `error`). Keeps per-step denominators whole when a run fails early."""
+    records = [_base_record(i, step, mode) for i, step in enumerate(scenario.tool_calls)]
+    if error:
+        for r in records:
+            r.error = error
+    return records
+
+
 def _apply(record: StepRecord, result: ToolResult) -> None:
     record.decision = result.decision
     record.outcome = result.outcome
@@ -96,10 +108,16 @@ class ScriptedDriver:
         }
 
     async def run(self, scenario: Scenario, mode: ArmorIQMode) -> list[StepRecord]:
-        gateway = await self._factory.open_call(f"eval-{scenario.id}-{uuid.uuid4().hex[:8]}")
-        # One record per scripted step, reached or not, so a crash can never shrink a
-        # denominator and make the scores look better.
-        records = [_base_record(i, step, mode) for i, step in enumerate(scenario.tool_calls)]
+        # One record per scripted step, reached or not, and every failure (open, call,
+        # approver, wait, close) lands on a record instead of escaping: a crash can never
+        # shrink a denominator or erase a harmful step that already ran.
+        records = unreached_records(scenario, mode)
+        try:
+            gateway = await self._factory.open_call(f"eval-{scenario.id}-{uuid.uuid4().hex[:8]}")
+        except Exception as exc:  # recorded on every step; nothing ran
+            return unreached_records(
+                scenario, mode, f"gateway open_call failed: {type(exc).__name__}: {exc}"
+            )
         try:
             for step, record in zip(scenario.tool_calls, records, strict=True):
                 try:
@@ -119,7 +137,13 @@ class ScriptedDriver:
                     record.decision, record.outcome, record.reason, record.armoriq_mode
                 )
         finally:
-            await gateway.close()
+            try:
+                await gateway.close()
+            except Exception as exc:  # recorded on the last step that reached the gateway
+                reached = [r for r in records if r.decision is not None] or records
+                last = reached[-1]
+                note = f"gateway.close failed: {type(exc).__name__}: {exc}"
+                last.error = f"{last.error}; {note}" if last.error else note
         for record in records:
             if record.decision is None and record.error is None:
                 record.error = "not reached: an earlier step failed"
@@ -137,7 +161,12 @@ class ScriptedDriver:
                 )
                 return
             record.approver_action = step.approver
-            decided = await self._approver.decide(held.delegation_id, step.approver)
+            try:
+                decided = await self._approver.decide(held.delegation_id, step.approver)
+            except Exception as exc:  # timeout, connection error, my-role refused
+                record.approver_ok = False
+                record.error = f"approver {step.approver} failed: {type(exc).__name__}: {exc}"
+                return
             record.approver_ok = decided.ok
             if not decided.ok:
                 # Leave the step PENDING: the tool never ran, and we never fake an outcome.

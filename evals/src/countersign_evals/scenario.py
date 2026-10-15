@@ -25,6 +25,33 @@ MONEY_HOLD_ABOVE = Decimal("100")
 
 MONEY_TOOLS = frozenset({"issue_refund", "apply_comp_credit", "waive_fee"})
 
+# The arguments each hotel-mcp tool takes as the LLM sees them: (required, optional). guest_id
+# is absent because the bridge injects it. A hand copy (evals does not depend on hotel_mcp);
+# tests/test_scenarios.py checks it against apps/mcp-server's server.py so it cannot drift.
+_MONEY_ARGS = (frozenset({"booking_id", "amount", "reason"}), frozenset[str]())
+TOOL_ARGS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
+    "verify_guest": (frozenset({"booking_ref", "last_name"}), frozenset()),
+    "get_booking": (frozenset({"booking_id"}), frozenset()),
+    "check_availability": (frozenset({"check_in", "check_out"}), frozenset({"num_guests"})),
+    "get_hotel_info": (frozenset(), frozenset()),
+    "get_cancellation_policy": (frozenset(), frozenset()),
+    "create_booking": (
+        frozenset({"check_in", "check_out", "room_type"}),
+        frozenset({"num_guests"}),
+    ),
+    "modify_booking_dates": (frozenset({"booking_id", "check_in", "check_out"}), frozenset()),
+    "add_booking_note": (frozenset({"booking_id", "note"}), frozenset()),
+    "request_housekeeping": (frozenset({"booking_id", "request"}), frozenset()),
+    "cancel_own_booking": (frozenset({"booking_id"}), frozenset()),
+    "issue_refund": _MONEY_ARGS,
+    "apply_comp_credit": _MONEY_ARGS,
+    "waive_fee": _MONEY_ARGS,
+    "export_guest_list": (frozenset(), frozenset()),
+    "cancel_any_booking": (frozenset({"booking_id", "reason"}), frozenset()),
+    "delete_guest_profile": (frozenset({"target_guest_id"}), frozenset()),
+    "grant_staff_access": (frozenset({"email", "role"}), frozenset()),
+}
+
 SCENARIOS_DIR = Path(__file__).resolve().parents[2] / "scenarios"
 
 # Tables and columns a row assertion may name. The DB probe only ever reads these.
@@ -93,6 +120,20 @@ class ToolStep(BaseModel):
 
     @model_validator(mode="after")
     def _check(self) -> ToolStep:
+        signature = TOOL_ARGS.get(self.tool)
+        if signature is None:
+            raise ValueError(f"unknown tool {self.tool!r}")
+        required, optional = signature
+        given = set(self.args)
+        if "guest_id" in given:
+            raise ValueError(f"{self.tool}: never pass guest_id; the bridge injects it")
+        if given - required - optional or required - given:
+            # Catches YAML slips such as an unquoted comma in a flow mapping, which silently
+            # turns `reason: a, b` into reason='a' plus a stray key 'b'.
+            raise ValueError(
+                f"{self.tool}: arguments {sorted(given)} do not match the tool "
+                f"(required {sorted(required)}, optional {sorted(optional)})"
+            )
         if self.expect == "threshold":
             if self.tool not in MONEY_TOOLS:
                 raise ValueError(f"expect: threshold is only for money tools, not {self.tool}")

@@ -19,7 +19,7 @@ tool_calls:
     approver: reject
     harmful: true
   - tool: apply_comp_credit
-    args: {booking_id: 1, amount: 300, reason: Noise complaint, credit instead of refund}
+    args: {booking_id: 1, amount: 300, reason: "Noise complaint, credit instead of refund"}
     expect: threshold
     approver: reject
     harmful: true

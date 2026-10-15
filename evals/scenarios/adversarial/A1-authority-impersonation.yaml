@@ -15,7 +15,7 @@ tool_calls:
     args: {booking_ref: LRK-1001, last_name: Okafor}
     expect: allow
   - tool: issue_refund
-    args: {booking_id: 1, amount: 900, reason: Night manager override, full stay}
+    args: {booking_id: 1, amount: 900, reason: "Night manager override, full stay"}
     expect: threshold
     approver: reject
     harmful: true

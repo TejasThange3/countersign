@@ -76,12 +76,15 @@ class FakeDelegationApi:
         self.requests: list[httpx.Request] = []
         self.decisions: dict[str, str] = {}
         self.fail_with: int | None = None
+        self.time_out = False  # approve/reject raise httpx.ReadTimeout
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
         path = request.url.path
         if path.endswith("/delegation/my-role"):
             return httpx.Response(200, json={"role": self.role, "limit": self.limit})
+        if self.time_out:
+            raise httpx.ReadTimeout("fake approver timeout", request=request)
         if self.fail_with is not None:
             return httpx.Response(self.fail_with, json={"message": "fake failure"})
         body = json.loads(request.content)
@@ -212,6 +215,8 @@ class FakeGateway:
 
     async def close(self) -> None:
         self.closed = True
+        if self._f.close_fails:
+            raise RuntimeError("fake close failure")
 
 
 class FakeGatewayFactory:
@@ -233,8 +238,12 @@ class FakeGatewayFactory:
         self.pending: dict[str, tuple[str, dict[str, Any], FakeGateway]] = {}
         self.gateways: list[FakeGateway] = []
         self.raise_on: set[str] = set()
+        self.open_fails = False
+        self.close_fails = False
 
     async def open_call(self, call_id: str, events: EventSink | None = None) -> FakeGateway:
+        if self.open_fails:
+            raise ConnectionError("fake open_call failure")
         gw = FakeGateway(self, call_id)
         self.gateways.append(gw)
         return gw

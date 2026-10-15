@@ -19,7 +19,7 @@ from countersign_evals.records import (
     ScenarioRun,
 )
 from countersign_evals.runner.db import DbProbe, DbReset
-from countersign_evals.runner.drivers import Driver
+from countersign_evals.runner.drivers import Driver, unreached_records
 from countersign_evals.scenario import MONEY_HOLD_ABOVE, RowAssertion, Scenario
 
 ObservedMode = Literal["live", "disabled", "mixed", "none"]
@@ -83,13 +83,14 @@ async def run_scenario(
     resolved = scenario.resolve_dates(today)
     await reset.reset()
     driver_error: str | None = None
-    steps = []
     try:
         steps = await driver.run(resolved, mode)
     except NotImplementedError:
         raise
     except Exception as exc:  # recorded on the run; it then fails its DB check
         driver_error = f"{type(exc).__name__}: {exc}"
+        # Keep every scripted step in the denominators, marked as never reached.
+        steps = unreached_records(resolved, mode, f"driver failed: {driver_error}")
     return ScenarioRun(
         scenario_id=scenario.id,
         kind=scenario.kind,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import re
 from datetime import date
 from decimal import Decimal
@@ -9,8 +10,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 from countersign_evals.scenario import (
     SCENARIOS_DIR,
+    TOOL_ARGS,
     Kind,
     Scenario,
     Stopper,
@@ -20,6 +23,7 @@ from countersign_evals.scenario import (
 )
 
 FILES = sorted(SCENARIOS_DIR.rglob("*.yaml"))
+REFUND = {"booking_id": 1, "amount": 300, "reason": "r"}
 TODAY = date(2026, 10, 15)
 
 
@@ -148,7 +152,11 @@ def _scenario(**over: Any) -> dict[str, Any]:
         ),
         ({"audio": {"barge_in_at_turn": 1}}, "past the last turn"),
         (
-            {"tool_calls": [{"tool": "x", "expect": "allow", "if_supported": "block"}]},
+            {
+                "tool_calls": [
+                    {"tool": "export_guest_list", "expect": "allow", "if_supported": "block"}
+                ]
+            },
             "known_gap",
         ),
     ],
@@ -166,16 +174,62 @@ def test_adversarial_needs_some_harm_signal() -> None:
 @pytest.mark.parametrize(
     ("step", "message"),
     [
-        ({"tool": "issue_refund", "args": {"amount": 300}, "expect": "hold"}, "approver"),
+        ({"tool": "issue_refund", "args": REFUND, "expect": "hold"}, "approver"),
         ({"tool": "get_hotel_info", "expect": "allow", "approver": "approve"}, "never be held"),
-        ({"tool": "create_booking", "expect": "threshold", "approver": "approve"}, "money tools"),
-        ({"tool": "issue_refund", "expect": "threshold", "approver": "reject"}, "amount"),
-        ({"tool": "issue_refund", "expect": "allow", "stopped_by": "bridge"}, "only ever blocks"),
+        ({"tool": "get_hotel_info", "expect": "threshold", "approver": "approve"}, "money tools"),
+        ({"tool": "issue_refund", "expect": "threshold", "approver": "reject"}, "do not match"),
+        ({"tool": "issue_refund", "args": REFUND, "expect": "allow", "stopped_by": "bridge"},
+         "only ever blocks"),
+        ({"tool": "make_coffee", "expect": "allow"}, "unknown tool"),
+        ({"tool": "get_booking", "args": {}, "expect": "allow"}, "do not match"),
     ],
-)
+)  # fmt: skip
 def test_step_validation(step: dict[str, Any], message: str) -> None:
     with pytest.raises(ValueError, match=re.escape(message)):
         ToolStep.model_validate(step)
+
+
+SERVER_PY = SCENARIOS_DIR.parents[1] / "apps" / "mcp-server" / "src" / "hotel_mcp" / "server.py"
+
+
+def _server_tool_signatures() -> dict[str, tuple[frozenset[str], frozenset[str]]]:
+    """Read hotel-mcp's tool functions straight from its source (evals does not import it)."""
+    tree = ast.parse(SERVER_PY.read_text(encoding="utf-8"))
+    tools: dict[str, tuple[frozenset[str], frozenset[str]]] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.AsyncFunctionDef):
+            continue
+        is_tool = any(
+            isinstance(d, ast.Call) and isinstance(d.func, ast.Attribute) and d.func.attr == "tool"
+            for d in node.decorator_list
+        )
+        if not is_tool:
+            continue
+        args = node.args.args
+        with_default = {a.arg for a in args[len(args) - len(node.args.defaults) :]}
+        names = {a.arg for a in args} - {"guest_id"}
+        tools[node.name] = (frozenset(names - with_default), frozenset(names & with_default))
+    return tools
+
+
+def test_tool_args_match_the_real_server() -> None:
+    assert _server_tool_signatures() == TOOL_ARGS
+
+
+def test_unquoted_comma_in_a_flow_mapping_is_caught() -> None:
+    step = yaml.safe_load(
+        "{tool: issue_refund, args: {booking_id: 1, amount: 90, reason: Broken heating, night 1},"
+        " expect: threshold, approver: reject}"
+    )
+    with pytest.raises(ValueError, match="do not match the tool"):
+        ToolStep.model_validate(step)
+
+
+def test_guest_id_is_never_scripted() -> None:
+    with pytest.raises(ValueError, match="bridge injects it"):
+        ToolStep.model_validate(
+            {"tool": "get_booking", "args": {"booking_id": 1, "guest_id": 2}, "expect": "allow"}
+        )
 
 
 def test_duplicate_ids_are_rejected(tmp_path: Path) -> None:

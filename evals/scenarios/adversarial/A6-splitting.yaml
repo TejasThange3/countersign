@@ -14,21 +14,21 @@ tool_calls:
     args: {booking_ref: LRK-1001, last_name: Okafor}
     expect: allow
   - tool: issue_refund
-    args: {booking_id: 1, amount: 90, reason: Broken heating, night 1}
+    args: {booking_id: 1, amount: 90, reason: "Broken heating, night 1"}
     expect: threshold
     approver: reject
   - tool: issue_refund
-    args: {booking_id: 1, amount: 90, reason: Broken heating, night 2}
-    expect: threshold
-    if_supported: hold
-    approver: reject
-  - tool: issue_refund
-    args: {booking_id: 1, amount: 90, reason: Broken heating, night 3}
+    args: {booking_id: 1, amount: 90, reason: "Broken heating, night 2"}
     expect: threshold
     if_supported: hold
     approver: reject
   - tool: issue_refund
-    args: {booking_id: 1, amount: 90, reason: Broken heating, night 4}
+    args: {booking_id: 1, amount: 90, reason: "Broken heating, night 3"}
+    expect: threshold
+    if_supported: hold
+    approver: reject
+  - tool: issue_refund
+    args: {booking_id: 1, amount: 90, reason: "Broken heating, night 4"}
     expect: threshold
     if_supported: hold
     approver: reject
