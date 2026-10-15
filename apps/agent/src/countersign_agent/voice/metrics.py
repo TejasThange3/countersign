@@ -5,6 +5,7 @@ For every user turn we keep:
 - `llm_ttft_ms`: the LLM's first time-to-first-answer-token (or TTFB) of the turn,
 - `tts_ttfb_ms`: the TTS service's first time-to-first-byte of the turn (audio mode only),
 - `user_to_bot_ms`: user stopped speaking -> bot started speaking (audio mode only),
+- `tts_characters`: characters synthesized by TTS in the turn (audio mode only; credit spend),
 - `models`: every Gemini model that answered in the turn, so a fallback is always visible.
 """
 
@@ -19,7 +20,7 @@ from pipecat.frames.frames import (
     UserStartedSpeakingFrame,
     UserStoppedSpeakingFrame,
 )
-from pipecat.metrics.metrics import TTFATMetricsData, TTFBMetricsData
+from pipecat.metrics.metrics import TTFATMetricsData, TTFBMetricsData, TTSUsageMetricsData
 from pipecat.observers.base_observer import BaseObserver, FramePushed
 from pipecat.services.llm_service import LLMService
 from pipecat.services.stt_service import STTService
@@ -35,12 +36,15 @@ class TurnMetrics(BaseModel):
     llm_ttft_ms: float | None = None
     tts_ttfb_ms: float | None = None
     user_to_bot_ms: float | None = None
+    # Characters sent to TTS in the turn: what ElevenLabs bills (cached filler is not counted
+    # because it never reaches the TTS service).
+    tts_characters: int = 0
     models: list[str] = Field(default_factory=list)
 
 
 def _is_empty(turn: TurnMetrics) -> bool:
     timings = (turn.stt_final_ms, turn.llm_ttft_ms, turn.tts_ttfb_ms, turn.user_to_bot_ms)
-    return not turn.models and all(value is None for value in timings)
+    return not turn.models and not turn.tts_characters and all(v is None for v in timings)
 
 
 class TurnMetricsRecorder(BaseObserver):
@@ -112,9 +116,12 @@ class TurnMetricsRecorder(BaseObserver):
                 elif isinstance(item, TTFBMetricsData) and turn.llm_ttft_ms is None:
                     if item.value > 0:
                         turn.llm_ttft_ms = round(item.value * 1000, 1)
-            elif isinstance(source, TTSService) and turn.tts_ttfb_ms is None:
-                if isinstance(item, TTFBMetricsData) and item.value > 0:
-                    turn.tts_ttfb_ms = round(item.value * 1000, 1)
+            elif isinstance(source, TTSService):
+                if isinstance(item, TTSUsageMetricsData):
+                    turn.tts_characters += item.value
+                elif isinstance(item, TTFBMetricsData) and item.value > 0:
+                    if turn.tts_ttfb_ms is None:
+                        turn.tts_ttfb_ms = round(item.value * 1000, 1)
             elif isinstance(source, STTService) and isinstance(item, TTFBMetricsData):
                 # Segmented STT (Whisper) reports its processing time as TTFB; keep it as
                 # the STT figure when no user-stopped timestamp was seen.
