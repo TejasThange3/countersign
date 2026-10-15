@@ -60,7 +60,11 @@ def make_stt(settings: AgentSettings) -> STTService:
     # float16 on the GPU; int8 is the fast CPU fallback when CUDA is not available.
     compute_type = "int8" if device == "cpu" else "default"
     return WhisperSTTService(
-        settings=WhisperSTTService.Settings(model=settings.whisper_model),
+        settings=WhisperSTTService.Settings(
+            model=settings.whisper_model,
+            initial_prompt=settings.whisper_initial_prompt or None,
+            hotwords=settings.whisper_hotwords or None,
+        ),
         device=device,
         compute_type=compute_type,
     )

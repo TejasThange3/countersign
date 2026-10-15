@@ -72,6 +72,15 @@ class AgentSettings(BaseSettings):
     # distil-medium.en (~400 MB) fits a memory-tight dev box; distil-large-v3 is more accurate.
     whisper_model: str = "distil-medium.en"
     whisper_device: Literal["cuda", "cpu", "auto"] = "auto"
+    # Domain context for Whisper. Without it, "guest 1001" came out as "I guess. 101" and
+    # "booking 1001" as "booking $101" in a live test; verification needs exact references.
+    # `initial_prompt` is preceding text the decoder continues from; `hotwords` biases words.
+    whisper_initial_prompt: str = (
+        "Phone call to the front desk of The Larkspur hotel. The caller gives a booking "
+        "reference like LRK-1001, LRK-1002 or LRK-1007 and a last name like Okafor or "
+        "Brandt, and asks about rooms, a refund, a comp credit or check-in."
+    )
+    whisper_hotwords: str = "LRK Larkspur Okafor Brandt booking reference refund"
 
     # Silero VAD thresholds. Speech counts when confidence AND loudness (0-1, from -110 to
     # -10 LUFS) both clear them. Pipecat's defaults (0.7 / 0.6) missed a caller talking over

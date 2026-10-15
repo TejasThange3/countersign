@@ -24,3 +24,21 @@ async def test_gateway_closes_when_pipeline_setup_fails(
         await pipeline.run_audio_call("c1", object(), factory, settings)  # type: ignore[arg-type]
 
     assert factory.opened[0].closed
+
+
+def test_whisper_gets_the_domain_vocabulary(monkeypatch: pytest.MonkeyPatch) -> None:
+    from pipecat.services.whisper import stt as whisper_stt
+
+    built: dict[str, Any] = {}
+
+    class RecordingWhisper:
+        Settings = whisper_stt.WhisperSTTService.Settings
+
+        def __init__(self, *, settings: Any, **kwargs: Any) -> None:
+            built["settings"] = settings
+
+    monkeypatch.setattr(whisper_stt, "WhisperSTTService", RecordingWhisper)
+    pipeline.make_stt(make_settings())
+
+    assert "LRK-1001" in built["settings"].initial_prompt
+    assert "Okafor" in built["settings"].hotwords
