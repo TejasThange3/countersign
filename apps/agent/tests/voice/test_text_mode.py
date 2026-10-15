@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from typing import Any
 
 import pytest
 from countersign_agent.contracts import Decision, Outcome
 from countersign_agent.voice.fake_gateway import FAKE_TOOL_SPECS, FakeGatewayFactory
 from countersign_agent.voice.holds import HOLD_ANNOUNCEMENT
 from countersign_agent.voice.text_mode import TextSession
-from fakes import FakeScriptedLLM, hotel_script, make_settings
+from fakes import FakeScriptedLLM, Step, hotel_script, make_settings
 
 
 async def open_session(
@@ -96,6 +97,29 @@ async def test_a_hold_decided_at_once_is_still_relayed(
     assert reply.tool_results[-1].outcome is (
         Outcome.NOT_RUN if resolution == "reject" else Outcome.RAN
     )
+
+
+@pytest.mark.parametrize("delay", [0.0, 0.3])
+async def test_outcome_relayed_when_the_tool_call_came_with_text(delay: float) -> None:
+    # gpt-oss often streams a sentence and the tool call in one response ("I've submitted
+    # the refund, it's pending approval" + issue_refund). Live, a rejection was then never
+    # spoken; the caller was left with "pending".
+    def chatty_script(messages: list[dict[str, Any]]) -> Step:
+        last = messages[-1]
+        if last.get("role") == "user":
+            return Step(
+                text="I've submitted the refund; it's pending manager approval.",
+                calls=[("issue_refund", {"booking_id": 1001, "amount": 250.0, "reason": "x"})],
+            )
+        return hotel_script(messages)
+
+    factory = FakeGatewayFactory(hold_resolution="reject", approval_delay_s=delay)
+    session = await open_session(factory, FakeScriptedLLM(chatty_script))
+    try:
+        reply = await session.send("Please refund 250 dollars")
+    finally:
+        await session.close()
+    assert reply.messages[-1] == "I'm sorry, the manager did not approve that."
 
 
 async def test_blocked_call_is_refused(approve_session: TextSession) -> None:

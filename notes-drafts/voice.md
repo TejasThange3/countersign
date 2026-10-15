@@ -54,6 +54,10 @@ answers the same questions by chat instead of by phone: same brain, same hatch, 
   pending, another call to the same tool *name* (any arguments, so 250 vs 250.0 can't slip
   through) gets "STILL_WAITING" and never reaches the gateway. `close()` (hangup) cancels every
   wait before the gateway closes.
+- **Approving in the ArmorIQ console: act only on the held tool row.** Held Actions also
+  lists each call's own plan ("csrg · allowed") and items such as `verify_guest`. Rejecting
+  those revokes the call's permissions, and every later tool call in that call comes back
+  "rejected". For a demo hold, approve or reject only the `issue_refund` (or other money) row.
 - **A late outcome waits its turn.** If the manager decides while the caller is talking, the
   outcome goes into the context at once but nothing is spoken until the caller's turn ends;
   the reply then answers their words and the outcome together (several outcomes coalesce into
