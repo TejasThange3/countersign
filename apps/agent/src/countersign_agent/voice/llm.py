@@ -1,24 +1,35 @@
-"""Gemini with backoff on rate limits and a recorded, never-silent fallback model.
+"""LLM services with rate-limit handling and a recorded, never-silent fallback model.
 
-The free Gemini tier rate-limits often. On a 429 or 5xx we back off and retry the same
-model a few times, then move to the fallback model. Retrying is only safe before the first
-chunk has been streamed, which is where these errors surface. Every inference reports the
-model that actually answered through `on_model_used`, and a fallback is logged as a warning,
-so evals can say which model produced each turn.
+Two providers, same contract: `FallbackGroqLLMService` (the default) and
+`FallbackGoogleLLMService`. On a rate limit or an unavailable model they retry or move to
+the fallback model, only before anything has been streamed (where these errors surface).
+Every inference reports the model that actually answered through `on_model_used`, and a
+fallback is logged as a warning, so evals can say which model produced each turn. With no
+fallback model configured (pinned mode, for evals) a failure fails the turn loudly.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import aclosing
 from typing import Any
 
 from google.genai.errors import APIError
+from openai import (
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    AsyncStream,
+    RateLimitError,
+)
+from openai.types.chat import ChatCompletionChunk
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.services.google.llm import GoogleLLMService
+from pipecat.services.groq.llm import GroqLLMService
 
 logger = logging.getLogger(__name__)
 
@@ -152,3 +163,108 @@ class FallbackGoogleLLMService(GoogleLLMService):
             logger.warning("Gemini fell back from %s to %s for this turn", primary, model)
         if self.on_model_used is not None:
             await self.on_model_used(model)
+
+
+# Groq answers these by moving to the fallback model: unknown model, or the service failing.
+_GROQ_SWITCH_NOW = {404, 500, 502, 503}
+_DURATION_PART = re.compile(r"(\d+(?:\.\d+)?)(ms|h|m|s)")
+_UNIT_S = {"ms": 0.001, "s": 1.0, "m": 60.0, "h": 3600.0}
+
+
+def parse_reset_s(value: str | None) -> float | None:
+    """Seconds from a `retry-after` ("7") or `x-ratelimit-reset-*` ("2m59.5s", "120ms")."""
+    if not value:
+        return None
+    value = value.strip()
+    try:
+        return float(value)
+    except ValueError:
+        pass
+    parts = _DURATION_PART.findall(value)
+    if not parts:
+        return None
+    return sum(float(number) * _UNIT_S[unit] for number, unit in parts)
+
+
+def rate_limit_wait_s(exc: RateLimitError) -> float | None:
+    """How long Groq says to wait. Prefers `retry-after`, then the tokens-per-minute reset
+    (the limit voice calls hit first), then the requests reset."""
+    headers = exc.response.headers
+    for name in ("retry-after", "x-ratelimit-reset-tokens", "x-ratelimit-reset-requests"):
+        wait = parse_reset_s(headers.get(name))
+        if wait is not None:
+            return wait
+    return None
+
+
+class FallbackGroqLLMService(GroqLLMService):
+    """Groq (OpenAI-compatible) with one header-timed retry on a 429, then the fallback."""
+
+    def __init__(
+        self,
+        *,
+        fallback_model: str | None,
+        max_rate_limit_wait_s: float = 10.0,
+        cooldown_s: float = 60.0,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(**kwargs)
+        # The openai SDK retries 429/5xx itself (2 retries, own backoff); this class decides.
+        self._client = self._client.with_options(max_retries=0)
+        self._fallback_model = fallback_model
+        self._max_rate_limit_wait_s = max_rate_limit_wait_s
+        self._cooldown_s = cooldown_s
+        self.on_model_used: ModelListener | None = None
+
+    async def get_chat_completions(self, context: LLMContext) -> AsyncStream[ChatCompletionChunk]:
+        # The request is built from `self._settings.model` when it is sent; `create` returns
+        # once the response headers arrive, which is where rate limits and outages surface.
+        primary = str(self._settings.model)
+        models = [primary]
+        if self._fallback_model and self._fallback_model != primary:
+            models.append(self._fallback_model)
+
+        last_error: Exception | None = None
+        try:
+            for index, model in enumerate(models):
+                is_last = index == len(models) - 1
+                if not is_last and _cooling_down(model):
+                    logger.warning("Groq %s is cooling down after a failure; skipping", model)
+                    continue
+                for attempt in range(2):
+                    self._settings.model = model
+                    try:
+                        stream = await super().get_chat_completions(context)
+                    except RateLimitError as exc:
+                        last_error = exc
+                        wait = rate_limit_wait_s(exc)
+                        logger.warning("Groq %s rate limited; reset in %s s", model, wait)
+                        if (
+                            attempt == 0
+                            and wait is not None
+                            and wait <= self._max_rate_limit_wait_s
+                        ):
+                            await asyncio.sleep(wait)
+                            continue
+                        _start_cooldown(model, wait if wait is not None else self._cooldown_s)
+                        break
+                    except APIStatusError as exc:
+                        if exc.status_code not in _GROQ_SWITCH_NOW:
+                            raise
+                        last_error = exc
+                        logger.warning("Groq %s failed with %s", model, exc.status_code)
+                        _start_cooldown(model, self._cooldown_s)
+                        break
+                    except (APITimeoutError, APIConnectionError) as exc:
+                        last_error = exc
+                        logger.warning("Groq %s unreachable: %s", model, exc)
+                        _start_cooldown(model, self._cooldown_s)
+                        break
+                    if model != primary:
+                        logger.warning("Groq fell back from %s to %s for this turn", primary, model)
+                    if self.on_model_used is not None:
+                        await self.on_model_used(model)
+                    return stream
+        finally:
+            self._settings.model = primary
+        raise last_error or RuntimeError("Groq returned no response")

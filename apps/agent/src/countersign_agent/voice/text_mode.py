@@ -36,7 +36,7 @@ from pydantic import BaseModel, Field
 from countersign_agent.contracts import GatewayFactory, ToolResult
 from countersign_agent.voice.config import AgentSettings
 from countersign_agent.voice.metrics import TurnMetrics
-from countersign_agent.voice.session import CallCore, LLMFactory, PipelineCallOutput, gemini_llm
+from countersign_agent.voice.session import CallCore, LLMFactory, PipelineCallOutput, make_llm
 
 logger = logging.getLogger(__name__)
 
@@ -170,7 +170,7 @@ class TextSession:
         factory: GatewayFactory,
         settings: AgentSettings,
         *,
-        llm_factory: LLMFactory = gemini_llm,
+        llm_factory: LLMFactory = make_llm,
     ) -> TextSession:
         gateway = await factory.open_call(call_id)
         try:

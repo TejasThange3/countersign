@@ -16,12 +16,13 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMUserAggregatorParams,
 )
 from pipecat.services.google.llm import GoogleLLMService
+from pipecat.services.groq.llm import GroqLLMService
 from pipecat.services.llm_service import LLMService
 
 from countersign_agent.contracts import ToolGateway, ToolResult
 from countersign_agent.voice.config import AgentSettings
 from countersign_agent.voice.holds import ToolRouter, hold_outcome_message
-from countersign_agent.voice.llm import FallbackGoogleLLMService
+from countersign_agent.voice.llm import FallbackGoogleLLMService, FallbackGroqLLMService
 from countersign_agent.voice.metrics import TurnMetricsRecorder
 from countersign_agent.voice.prompts import SYSTEM_PROMPT
 from countersign_agent.voice.tools import build_tools_schema
@@ -42,6 +43,27 @@ def gemini_llm(settings: AgentSettings) -> LLMService:
         last_model_timeout_s=settings.gemini_last_model_timeout_s,
         cooldown_s=settings.gemini_model_cooldown_s,
     )
+
+
+def groq_llm(settings: AgentSettings) -> LLMService:
+    if not settings.groq_api_key:
+        raise RuntimeError("GROQ_API_KEY is not set (or set LLM_PROVIDER=gemini)")
+    return FallbackGroqLLMService(
+        api_key=settings.groq_api_key,
+        settings=GroqLLMService.Settings(
+            model=settings.llm_model,
+            system_instruction=SYSTEM_PROMPT,
+            reasoning_effort=settings.llm_reasoning_effort,
+        ),
+        fallback_model=settings.llm_fallback_model,
+        max_rate_limit_wait_s=settings.llm_rate_limit_max_wait_s,
+        cooldown_s=settings.llm_model_cooldown_s,
+    )
+
+
+def make_llm(settings: AgentSettings) -> LLMService:
+    """The LLM for one call, from LLM_PROVIDER."""
+    return groq_llm(settings) if settings.llm_provider == "groq" else gemini_llm(settings)
 
 
 class PipelineCallOutput:
@@ -80,7 +102,7 @@ class CallCore:
         settings: AgentSettings,
         output: PipelineCallOutput,
         *,
-        llm_factory: LLMFactory = gemini_llm,
+        llm_factory: LLMFactory = make_llm,
         user_params: LLMUserAggregatorParams | None = None,
     ) -> None:
         self.call_id = call_id
@@ -96,7 +118,7 @@ class CallCore:
             on_result=self._record_result,
         )
         self.llm = llm_factory(settings)
-        if isinstance(self.llm, FallbackGoogleLLMService):
+        if isinstance(self.llm, (FallbackGoogleLLMService, FallbackGroqLLMService)):
             self.llm.on_model_used = self.metrics.record_model
         self.context = LLMContext(
             tools=build_tools_schema(gateway.tool_specs(), self.router.handle)

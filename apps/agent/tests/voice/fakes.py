@@ -114,6 +114,7 @@ def hotel_script(messages: list[dict[str, Any]]) -> Step:
 def make_settings(**overrides: Any) -> AgentSettings:
     base: dict[str, Any] = {
         "gemini_api_key": "",
+        "groq_api_key": "",
         "elevenlabs_api_key": "",
         "hold_timeout_s": 5.0,
         "hold_filler_interval_s": 0.05,

@@ -38,7 +38,7 @@ from countersign_agent.contracts import GatewayFactory
 from countersign_agent.voice.config import AgentSettings
 from countersign_agent.voice.fake_gateway import FakeGatewayFactory
 from countersign_agent.voice.pipeline import run_audio_call
-from countersign_agent.voice.session import LLMFactory, gemini_llm
+from countersign_agent.voice.session import LLMFactory, make_llm
 from countersign_agent.voice.text_mode import TextReply, TextSession
 from countersign_agent.voice.transports import simulator_transport, webrtc_transport
 
@@ -86,7 +86,7 @@ def create_app(
     settings: AgentSettings | None = None,
     factory: GatewayFactory | None = None,
     *,
-    llm_factory: LLMFactory = gemini_llm,
+    llm_factory: LLMFactory = make_llm,
 ) -> FastAPI:
     settings = settings or AgentSettings()
     gateway_factory = factory or load_factory(settings.gateway_factory)

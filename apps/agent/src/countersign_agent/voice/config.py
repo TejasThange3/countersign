@@ -27,6 +27,25 @@ class AgentSettings(BaseSettings):
     # bridge lane's real factory replaces it with an env change, not a code change.
     gateway_factory: str = FAKE_GATEWAY_FACTORY
 
+    # Which LLM answers calls. Groq is the default: Gemini's free tier ran out of daily quota
+    # (20 requests per model) during development. Gemini stays available.
+    llm_provider: Literal["groq", "gemini"] = "groq"
+
+    groq_api_key: str = ""
+    # Groq models (Gemini uses GEMINI_MODEL / GEMINI_FALLBACK_MODEL below). Each Groq model
+    # has its own rate limits, so the fallback also absorbs a 429 on the primary. Every turn
+    # records which model answered. LLM_FALLBACK_MODEL= (empty) pins one model for evals.
+    llm_model: str = "openai/gpt-oss-120b"
+    llm_fallback_model: str | None = "openai/gpt-oss-20b"
+    # gpt-oss reasons before answering; "low" keeps a phone turn fast.
+    llm_reasoning_effort: Literal["low", "medium", "high"] = "low"
+    # On a 429, wait what Groq's reset headers say and retry once, if that is no longer than
+    # this; otherwise (or if the retry also fails) move to the fallback model.
+    llm_rate_limit_max_wait_s: float = 10.0
+    # After a failure, skip that Groq model (unless it's the only option) for this long, or
+    # for as long as its rate-limit reset header says.
+    llm_model_cooldown_s: float = 60.0
+
     gemini_api_key: str = ""
     gemini_model: str = "gemini-3.8-flash"
     # Used only when the primary model is rate limited or unavailable; every turn records

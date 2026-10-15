@@ -18,7 +18,7 @@ async def test_gateway_closes_when_pipeline_setup_fails(
 
     monkeypatch.setattr(pipeline, "_run_pipeline", broken)
     factory = FakeGatewayFactory()
-    settings = make_settings(hold_filler_cache_dir=tmp_path, gemini_api_key="fake-key")
+    settings = make_settings(hold_filler_cache_dir=tmp_path, groq_api_key="fake-key")
 
     with pytest.raises(RuntimeError):
         await pipeline.run_audio_call("c1", object(), factory, settings)  # type: ignore[arg-type]

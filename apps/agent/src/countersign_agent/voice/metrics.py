@@ -6,7 +6,8 @@ For every user turn we keep:
 - `tts_ttfb_ms`: the TTS service's first time-to-first-byte of the turn (audio mode only),
 - `user_to_bot_ms`: user stopped speaking -> bot started speaking (audio mode only),
 - `tts_characters`: characters synthesized by TTS in the turn (audio mode only; credit spend),
-- `models`: every Gemini model that answered in the turn, so a fallback is always visible.
+- `llm_prompt_tokens` / `llm_completion_tokens`: tokens of each LLM request in the turn,
+- `models`: every LLM model that answered in the turn, so a fallback is always visible.
 """
 
 from __future__ import annotations
@@ -20,7 +21,12 @@ from pipecat.frames.frames import (
     UserStartedSpeakingFrame,
     UserStoppedSpeakingFrame,
 )
-from pipecat.metrics.metrics import TTFATMetricsData, TTFBMetricsData, TTSUsageMetricsData
+from pipecat.metrics.metrics import (
+    LLMUsageMetricsData,
+    TTFATMetricsData,
+    TTFBMetricsData,
+    TTSUsageMetricsData,
+)
 from pipecat.observers.base_observer import BaseObserver, FramePushed
 from pipecat.services.llm_service import LLMService
 from pipecat.services.stt_service import STTService
@@ -39,12 +45,16 @@ class TurnMetrics(BaseModel):
     # Characters sent to TTS in the turn: what ElevenLabs bills (cached filler is not counted
     # because it never reaches the TTS service).
     tts_characters: int = 0
+    # Tokens per LLM request in the turn, so evals can pace against tokens-per-minute limits.
+    llm_prompt_tokens: list[int] = Field(default_factory=list)
+    llm_completion_tokens: list[int] = Field(default_factory=list)
     models: list[str] = Field(default_factory=list)
 
 
 def _is_empty(turn: TurnMetrics) -> bool:
     timings = (turn.stt_final_ms, turn.llm_ttft_ms, turn.tts_ttfb_ms, turn.user_to_bot_ms)
-    return not turn.models and not turn.tts_characters and all(v is None for v in timings)
+    counted = turn.models or turn.tts_characters or turn.llm_prompt_tokens
+    return not counted and all(v is None for v in timings)
 
 
 class TurnMetricsRecorder(BaseObserver):
@@ -108,6 +118,11 @@ class TurnMetricsRecorder(BaseObserver):
         turn = self.current
         for item in frame.data:
             if isinstance(source, LLMService):
+                if isinstance(item, LLMUsageMetricsData):
+                    # One entry per LLM request (a tool call and the reply after it are two).
+                    turn.llm_prompt_tokens.append(item.value.prompt_tokens)
+                    turn.llm_completion_tokens.append(item.value.completion_tokens)
+                    continue
                 # TTFAT (first answer token, thinking included) is what the caller feels;
                 # TTFB arrives first and is kept only if no TTFAT follows.
                 if isinstance(item, TTFATMetricsData) and self._ttfat_turn != turn.turn:

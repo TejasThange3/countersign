@@ -1,7 +1,9 @@
-"""LIVE: a real Gemini conversation in text mode against the FakeGateway (no ArmorIQ).
+"""LIVE: a real LLM conversation (LLM_PROVIDER, default Groq) in text mode against the
+FakeGateway (no ArmorIQ).
 
 Run on purpose only: `uv run --project apps/agent pytest -m live tests/voice/test_live_text.py`.
-Needs GEMINI_API_KEY in .env. Spends free-tier Gemini quota, no ElevenLabs credits.
+Needs GROQ_API_KEY (or GEMINI_API_KEY with LLM_PROVIDER=gemini) in .env. Spends LLM quota,
+no ElevenLabs credits.
 """
 
 from __future__ import annotations
@@ -17,8 +19,9 @@ pytestmark = pytest.mark.live
 
 async def test_availability_then_small_refund() -> None:
     settings = AgentSettings()
-    if not settings.gemini_api_key:
-        pytest.skip("GEMINI_API_KEY is not set")
+    key = settings.groq_api_key if settings.llm_provider == "groq" else settings.gemini_api_key
+    if not key:
+        pytest.skip(f"no API key for LLM_PROVIDER={settings.llm_provider}")
     factory = FakeGatewayFactory()
     session = await TextSession.open("live-text", factory, settings)
     try:
