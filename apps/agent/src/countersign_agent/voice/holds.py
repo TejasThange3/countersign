@@ -48,6 +48,15 @@ STILL_WAITING_RESULT = (
     "approval, and do not call {tool} again."
 )
 
+# Function result for a second concurrent call to the same tool in one LLM response.
+DUPLICATE_RESULT = (
+    "DUPLICATE: {tool} was requested twice at the same time. Only the first request was "
+    "processed; this one was not run."
+)
+
+# Function result when the gateway itself failed. Says nothing about why, by design.
+GATEWAY_ERROR_RESULT = "ERROR: that could not be done right now, so nothing was changed."
+
 # Seconds allowed past the gateway's own timeout before we give up on a misbehaving wait.
 WAIT_GRACE_S = 10.0
 
@@ -82,6 +91,7 @@ class ToolRouter:
         hold_timeout_s: float,
         filler_interval_s: float,
         on_result: ResultListener | None = None,
+        wait_grace_s: float = WAIT_GRACE_S,
     ) -> None:
         self._gateway = gateway
         self._output = output
@@ -90,6 +100,10 @@ class ToolRouter:
         self._on_result = on_result
         # Tool name -> the background task waiting on that tool's held call.
         self._pending: dict[str, asyncio.Task[None]] = {}
+        # Tool names whose gateway.call is running right now.
+        self._in_flight: set[str] = set()
+        self._side_effect_tools = {s.name for s in gateway.tool_specs() if s.tier != "read"}
+        self._wait_grace_s = wait_grace_s
         self._closed = False
 
     @property
@@ -105,20 +119,39 @@ class ToolRouter:
             logger.info("tool %s called again during its hold; not sent to the gateway", name)
             await params.result_callback(STILL_WAITING_RESULT.format(tool=name))
             return
-
-        result = await self._gateway.call(name, dict(params.arguments))
-        await self._notify(result)
-
-        if result.outcome is not Outcome.PENDING:
-            await params.result_callback(result.content)
+        if name in self._in_flight and name in self._side_effect_tools:
+            # The LLM asked for the same acting tool twice in one response (handlers run
+            # concurrently). Only the first may reach the gateway: two refunds are two refunds.
+            # Reads are exempt; two availability checks for different dates are fine.
+            logger.warning("tool %s requested twice at once; second call not sent", name)
+            await params.result_callback(DUPLICATE_RESULT.format(tool=name))
             return
 
-        if self._closed:
-            # The call ended while the gateway was deciding; nobody is left to wait for.
-            await params.result_callback(PENDING_RESULT)
-            return
+        self._in_flight.add(name)
+        try:
+            try:
+                result = await self._gateway.call(name, dict(params.arguments))
+            except Exception:
+                # Fail closed, and still settle the function call so the LLM isn't left
+                # waiting on a result that never comes.
+                logger.exception("gateway.call failed for %s; treating as not done", name)
+                await params.result_callback(GATEWAY_ERROR_RESULT)
+                return
+            await self._notify(result)
 
-        self._pending[name] = asyncio.create_task(self._wait(name, result), name=f"hold:{name}")
+            if result.outcome is not Outcome.PENDING:
+                await params.result_callback(result.content)
+                return
+
+            if self._closed:
+                # The call ended while the gateway was deciding; nobody is left to wait for.
+                await params.result_callback(PENDING_RESULT)
+                return
+
+            task = asyncio.create_task(self._wait(name, result), name=f"hold:{name}")
+            self._pending[name] = task
+        finally:
+            self._in_flight.discard(name)
         await self._output.say(HOLD_ANNOUNCEMENT)
         await params.result_callback(
             PENDING_RESULT, properties=FunctionCallResultProperties(run_llm=False)
@@ -150,11 +183,14 @@ class ToolRouter:
                 await filler
             self._pending.pop(name, None)
         await self._notify(final)
+        if self._closed:
+            # Hung up between the decision and delivery: nobody is left to tell.
+            return
         await self._output.deliver_hold_outcome(name, final)
 
     async def _await_decision(self, held: ToolResult) -> ToolResult:
         try:
-            async with asyncio.timeout(self._hold_timeout_s + WAIT_GRACE_S):
+            async with asyncio.timeout(self._hold_timeout_s + self._wait_grace_s):
                 return await self._gateway.wait(held, timeout_s=self._hold_timeout_s)
         except TimeoutError:
             logger.error("gateway.wait overran its timeout for %s; treating as refusal", held.tool)

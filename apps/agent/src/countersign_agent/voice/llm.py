@@ -35,7 +35,6 @@ _SWITCH_NOW = {404, 500, 503}
 # A model that just failed is skipped (unless it is the last option) for this long, so an
 # overloaded primary doesn't add seconds of silence to every turn. Process-wide on purpose:
 # one LLM instance exists per call, and the overload outlives any single call.
-COOLDOWN_S = 120.0
 _cooldown_until: dict[str, float] = {}
 
 
@@ -43,8 +42,11 @@ def _cooling_down(model: str) -> bool:
     return time.monotonic() < _cooldown_until.get(model, 0.0)
 
 
-def _start_cooldown(model: str) -> None:
-    _cooldown_until[model] = time.monotonic() + COOLDOWN_S
+def _start_cooldown(model: str, seconds: float) -> None:
+    if seconds <= 0:
+        return
+    logger.warning("Gemini %s skipped for the next %.0fs after a failure", model, seconds)
+    _cooldown_until[model] = time.monotonic() + seconds
 
 
 class FallbackGoogleLLMService(GoogleLLMService):
@@ -55,6 +57,7 @@ class FallbackGoogleLLMService(GoogleLLMService):
         rate_limit_retries: int = 2,
         backoff_s: float = 2.0,
         first_chunk_timeout_s: float = 10.0,
+        cooldown_s: float = 120.0,
         **kwargs: Any,
     ) -> None:
         # The google-genai SDK retries 429/5xx itself with long backoffs, which hid a 503 for
@@ -65,6 +68,7 @@ class FallbackGoogleLLMService(GoogleLLMService):
         self._rate_limit_retries = rate_limit_retries
         self._backoff_s = backoff_s
         self._first_chunk_timeout_s = first_chunk_timeout_s
+        self._cooldown_s = cooldown_s
         self.on_model_used: ModelListener | None = None
 
     async def _stream_response(self, context: LLMContext) -> AsyncIterator[Any]:
@@ -95,7 +99,7 @@ class FallbackGoogleLLMService(GoogleLLMService):
                             # Accepted but silent: seen live when the model is under load.
                             logger.warning("Gemini %s sent nothing in time; moving on", model)
                             last_error = exc
-                            _start_cooldown(model)
+                            _start_cooldown(model, self._cooldown_s)
                             break
                         except APIError as exc:
                             if exc.code not in _RETRYABLE | _SWITCH_NOW:
@@ -103,10 +107,13 @@ class FallbackGoogleLLMService(GoogleLLMService):
                             last_error = exc
                             logger.warning("Gemini %s failed with %s", model, exc.code)
                             if exc.code in _SWITCH_NOW or attempt == self._rate_limit_retries:
-                                _start_cooldown(model)
+                                _start_cooldown(model, self._cooldown_s)
                                 break
                             await asyncio.sleep(self._backoff_s * 2**attempt)
                             continue
+                        # The request has been sent with `model`; restore the setting before
+                        # yielding so a consumer cancelled mid-stream can't leave it switched.
+                        self._settings.model = primary
                         await self._report_model(model, primary)
                         yield first
                         async for chunk in stream:

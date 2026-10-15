@@ -99,7 +99,11 @@ def create_app(
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         yield
         for session in list(text_calls.values()):
-            await session.close()
+            try:
+                await session.close()
+            except Exception:
+                # Keep shutting the rest down; one broken call must not leak the others.
+                logger.exception("closing text call %s failed", session.call_id)
         text_calls.clear()
         await webrtc.close()
         for task in list(audio_tasks):

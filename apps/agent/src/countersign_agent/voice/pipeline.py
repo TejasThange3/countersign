@@ -90,15 +90,34 @@ async def run_audio_call(
         model_id=settings.elevenlabs_tts_model,
     )
     gateway = await factory.open_call(call_id)
-    output = AudioCallOutput(filler)
-    core = CallCore(
-        call_id,
-        gateway,
-        settings,
-        output,
-        user_params=LLMUserAggregatorParams(vad_analyzer=SileroVADAnalyzer()),
-    )
+    core: CallCore | None = None
+    try:
+        output = AudioCallOutput(filler)
+        core = CallCore(
+            call_id,
+            gateway,
+            settings,
+            output,
+            user_params=LLMUserAggregatorParams(vad_analyzer=SileroVADAnalyzer()),
+        )
+        await _run_pipeline(call_id, transport, core, output, settings, stt)
+    finally:
+        if core is not None:
+            await core.close()
+            turns = [t.model_dump() for t in core.metrics.turns]
+            logger.info("call %s ended; turns: %s", call_id, turns)
+        else:
+            await gateway.close()
 
+
+async def _run_pipeline(
+    call_id: str,
+    transport: BaseTransport,
+    core: CallCore,
+    output: AudioCallOutput,
+    settings: AgentSettings,
+    stt: STTService | None,
+) -> None:
     pipeline = Pipeline(
         [
             transport.input(),
@@ -135,10 +154,4 @@ async def run_audio_call(
 
     runner = WorkerRunner(handle_sigint=False)
     await runner.add_workers(worker)
-    try:
-        await runner.run()
-    finally:
-        await core.close()
-        logger.info(
-            "call %s ended; turns: %s", call_id, [t.model_dump() for t in core.metrics.turns]
-        )
+    await runner.run()

@@ -3,18 +3,14 @@
 from __future__ import annotations
 
 import logging
-import sys
 from collections.abc import Iterator
-from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
-
-sys.path.insert(0, str(Path(__file__).parent / "voice"))
 from countersign_agent.app import create_app, load_factory
 from countersign_agent.voice.fake_gateway import FakeGatewayFactory
 from countersign_agent.voice.holds import HOLD_ANNOUNCEMENT
-from fakes import FakeScriptedLLM, hotel_script, make_settings  # needs the path above
+from fakes import FakeScriptedLLM, hotel_script, make_settings  # on sys.path via conftest.py
+from fastapi.testclient import TestClient
 
 
 @pytest.fixture

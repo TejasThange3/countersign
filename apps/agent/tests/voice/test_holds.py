@@ -154,3 +154,69 @@ async def test_hangup_in_text_mode_cancels_wait_and_closes_gateway() -> None:
     gateway = factory.opened[0]
     assert gateway.waits_cancelled == 1
     assert gateway.closed
+
+
+class SlowCall(FakeGateway):
+    """gateway.call takes a moment, so two concurrent handlers overlap."""
+
+    async def call(self, name: str, arguments: dict[str, Any]) -> ToolResult:
+        await asyncio.sleep(0.05)
+        return await super().call(name, arguments)
+
+
+async def test_same_acting_tool_twice_at_once_reaches_gateway_once() -> None:
+    gateway = SlowCall("c1", approval_delay_s=30)
+    output = RecordingOutput()
+    router = make_router(gateway, output)
+    first = FakeParams("issue_refund", REFUND_250, output.log)
+    second = FakeParams("issue_refund", dict(REFUND_250), [])
+
+    await asyncio.gather(router.handle(first), router.handle(second))  # type: ignore[arg-type]
+
+    assert len(gateway.calls) == 1
+    assert "DUPLICATE" in second.results[0][0]
+    await router.close()
+
+
+async def test_parallel_reads_are_not_deduplicated() -> None:
+    gateway = SlowCall("c1")
+    router = make_router(gateway, RecordingOutput())
+    a = FakeParams("check_availability", {"check_in": "2026-11-02"}, [])
+    b = FakeParams("check_availability", {"check_in": "2026-12-02"}, [])
+    await asyncio.gather(router.handle(a), router.handle(b))  # type: ignore[arg-type]
+    assert len(gateway.calls) == 2
+
+
+async def test_gateway_call_error_fails_closed_and_settles_the_call() -> None:
+    class BrokenCall(FakeGateway):
+        async def call(self, name: str, arguments: dict[str, Any]) -> ToolResult:
+            raise RuntimeError("ArmorIQ unreachable")
+
+    output = RecordingOutput()
+    router = make_router(BrokenCall("c1"), output)
+    params = FakeParams("issue_refund", REFUND_250, output.log)
+    await router.handle(params)  # type: ignore[arg-type]
+
+    assert params.results and params.results[0][0].startswith("ERROR")
+    assert router.pending_tools == []
+    # The name is released, so a later call is not mistaken for a duplicate.
+    again = FakeParams("issue_refund", REFUND_250, [])
+    await router.handle(again)  # type: ignore[arg-type]
+    assert again.results[0][0].startswith("ERROR")
+
+
+async def test_hung_wait_is_a_refusal() -> None:
+    class HungWait(FakeGateway):
+        async def wait(self, held: ToolResult, timeout_s: float = 60.0) -> ToolResult:
+            await asyncio.sleep(3600)
+            raise AssertionError("unreachable")
+
+    output = RecordingOutput()
+    router = ToolRouter(
+        HungWait("c1"), output, hold_timeout_s=0.05, filler_interval_s=1, wait_grace_s=0.05
+    )
+    await router.handle(FakeParams("issue_refund", REFUND_250, output.log))  # type: ignore[arg-type]
+    await asyncio.wait_for(router.wait_for_holds(), timeout=2)
+
+    assert output.outcomes[0].outcome is Outcome.NOT_RUN
+    assert output.outcomes[0].reason == "hold_wait_overrun"

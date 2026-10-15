@@ -136,3 +136,14 @@ def test_empty_env_value_disables_fallback(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setenv("GEMINI_FALLBACK_MODEL", "")
     settings = AgentSettings(_env_file=None)  # type: ignore[call-arg]  # pydantic-settings kwarg
     assert not settings.gemini_fallback_model
+
+
+async def test_model_is_restored_before_streaming_so_abandoned_streams_cant_leak(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service, _requested = make_service(monkeypatch, {PRIMARY: [503], FALLBACK: ["hi"]})
+    stream = service._stream_response(LLMContext())
+    assert await anext(stream) == "hi"
+    # A barge-in can abandon the stream here without closing it.
+    assert service._settings.model == PRIMARY
+    await stream.aclose()

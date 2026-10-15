@@ -216,13 +216,15 @@ class TextSession:
         if self._closed:
             return
         self._closed = True
-        await self.core.close()
-        await self._runner.cancel(reason="text call closed")
-        if self._run_task is not None:
-            await self._run_task
+        try:
+            await self.core.close()
+        finally:
+            await self._runner.cancel(reason="text call closed")
+            if self._run_task is not None:
+                await self._run_task
 
     async def _collect(self, wait_for_holds: bool, timeout_s: float | None) -> TextReply:
-        limit = timeout_s or self._settings.hold_timeout_s + 60
+        limit = timeout_s if timeout_s is not None else self._settings.hold_timeout_s + 60
         async with asyncio.timeout(limit):
             await self._wait_idle(wait_for_holds)
         return self._drain()

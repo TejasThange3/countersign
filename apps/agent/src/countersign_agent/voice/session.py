@@ -39,6 +39,7 @@ def gemini_llm(settings: AgentSettings) -> LLMService:
         rate_limit_retries=settings.gemini_rate_limit_retries,
         backoff_s=settings.gemini_rate_limit_backoff_s,
         first_chunk_timeout_s=settings.gemini_first_chunk_timeout_s,
+        cooldown_s=settings.gemini_model_cooldown_s,
     )
 
 

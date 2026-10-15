@@ -45,8 +45,13 @@ async def load_filler(cache: Path, *, api_key: str, voice_id: str, model_id: str
     except httpx.HTTPError:
         logger.exception("could not synthesize hold filler; using the hold tone")
         return hold_tone()
-    await asyncio.to_thread(_write_cache, cache, audio)
-    logger.info("hold filler synthesized once and cached at %s", cache)
+    try:
+        await asyncio.to_thread(_write_cache, cache, audio)
+    except OSError:
+        # Still usable for this call; it just gets synthesized again next time.
+        logger.exception("could not cache hold filler at %s", cache)
+    else:
+        logger.info("hold filler synthesized once and cached at %s", cache)
     return audio
 
 
