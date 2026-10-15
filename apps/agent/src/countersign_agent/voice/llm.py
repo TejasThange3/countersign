@@ -32,6 +32,12 @@ _RETRYABLE = {429}
 _SWITCH_NOW = {404, 500, 503}
 
 
+def _daily_quota_exhausted(exc: APIError) -> bool:
+    """A 429 for the per-day quota (free tier: 20 requests per model) won't clear in seconds,
+    so retrying it only adds silence."""
+    return exc.code == 429 and "PerDay" in str(exc.details)
+
+
 # A model that just failed is skipped (unless it is the last option) for this long, so an
 # overloaded primary doesn't add seconds of silence to every turn. Process-wide on purpose:
 # one LLM instance exists per call, and the overload outlives any single call.
@@ -119,7 +125,11 @@ class FallbackGoogleLLMService(GoogleLLMService):
                                 raise
                             last_error = exc
                             logger.warning("Gemini %s failed with %s", model, exc.code)
-                            if exc.code in _SWITCH_NOW or attempt == self._rate_limit_retries:
+                            if (
+                                exc.code in _SWITCH_NOW
+                                or _daily_quota_exhausted(exc)
+                                or attempt == self._rate_limit_retries
+                            ):
                                 _start_cooldown(model, self._cooldown_s)
                                 break
                             await asyncio.sleep(self._backoff_s * 2**attempt)

@@ -39,6 +39,11 @@ def make_service(
         outcome = behaviour[model].pop(0)
         if isinstance(outcome, int):
             raise APIError(outcome, {"error": {"message": "fake", "status": "FAKE"}})
+        if outcome == "daily_quota":
+            # Shape of the real free-tier 429 seen live.
+            quota = {"quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier"}
+            error = {"message": "quota", "status": "RESOURCE_EXHAUSTED", "details": [quota]}
+            raise APIError(429, {"error": error})
         if outcome == "stall":
             await asyncio.sleep(10)
         elif outcome == "slow":
@@ -88,6 +93,13 @@ async def test_429_retries_primary_before_falling_back(monkeypatch: pytest.Monke
     service, requested = make_service(monkeypatch, {PRIMARY: [429, 429, 429], FALLBACK: ["hi"]})
     _chunks, used = await collect(service)
     assert requested == [PRIMARY, PRIMARY, PRIMARY, FALLBACK]
+    assert used == [FALLBACK]
+
+
+async def test_daily_quota_429_switches_without_retrying(monkeypatch: pytest.MonkeyPatch) -> None:
+    service, requested = make_service(monkeypatch, {PRIMARY: ["daily_quota"], FALLBACK: ["hi"]})
+    _chunks, used = await collect(service)
+    assert requested == [PRIMARY, FALLBACK]
     assert used == [FALLBACK]
 
 
