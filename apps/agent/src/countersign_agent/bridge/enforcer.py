@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import threading
 import time
 from collections.abc import Callable
+from concurrent.futures import Executor, ThreadPoolExecutor
 from typing import Any, Literal, Protocol
 
 from armoriq_sdk.session import EnforceResult, ReportOptions
@@ -26,8 +26,19 @@ logger = logging.getLogger("countersign_agent.bridge.enforcer")
 # The SDK mints a plan's token from `user_email_override`, one field on the shared client
 # that every `for_user(...).start_session()` overwrites (client.py:593-601, :1795-1823). Two
 # calls opening plans at once could mint a token for the other caller's identity, so
-# "open session + start plan" runs as one step under this process-wide lock.
-PLAN_LOCK = threading.Lock()
+# "open session + start plan" runs as one step on this single process-wide thread. A
+# dedicated thread (not a lock inside the shared pool) so calls queued behind a slow plan
+# never tie up the workers that every other call's check, report and approval polls use.
+PLAN_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="armoriq-plan")
+
+
+class _PlanFailed(Exception):
+    """start_plan failed after the session was built; the session still needs closing."""
+
+    def __init__(self, session: GovernedSession) -> None:
+        super().__init__("ArmorIQ plan failed")
+        self.session = session
+
 
 # The SDK turns any enforce exception into a block with this reason (session.py:860-864).
 SDK_UNAVAILABLE_PREFIX = "enforce-unavailable"
@@ -134,10 +145,10 @@ class ArmorIQEnforcer:
         approvals: ApprovalBackend,
         tool_names: list[str],
         poll_seconds: float,
-        plan_lock: threading.Lock = PLAN_LOCK,
+        plan_executor: Executor = PLAN_EXECUTOR,
     ) -> None:
         self._session_factory = session_factory
-        self._plan_lock = plan_lock
+        self._plan_executor = plan_executor
         self._approvals = approvals
         self._tool_names = tool_names
         self._poll_seconds = poll_seconds
@@ -153,23 +164,36 @@ class ArmorIQEnforcer:
         started = time.perf_counter()
         # A worker thread can't be cancelled: if the caller hangs up meanwhile, the session it
         # eventually returns must still be closed, so the thread's result is kept (shield).
-        opening = asyncio.ensure_future(asyncio.to_thread(self._open_plan, user_email, goal))
+        opening = asyncio.get_running_loop().run_in_executor(
+            self._plan_executor, self._open_plan, user_email, goal
+        )
         try:
             session, token = await asyncio.shield(opening)
         except asyncio.CancelledError:
             opening.add_done_callback(self._close_orphan)
             raise
+        except _PlanFailed as failed:
+            logger.exception("ArmorIQ plan failed; every check will fail closed")
+            # Closed here, off the plan thread, so the next caller's plan isn't held up.
+            await self._close_session(failed.session)
+            return _ms_since(started)
         except Exception:
-            logger.exception("ArmorIQ session/plan failed; every check will fail closed")
+            logger.exception("ArmorIQ session failed; every check will fail closed")
             return _ms_since(started)
         self._session = session
         self.plan_id = getattr(token, "plan_id", None)
         return _ms_since(started)
 
     def _close_orphan(self, opening: asyncio.Future[tuple[GovernedSession, Any]]) -> None:
-        if opening.cancelled() or opening.exception() is not None:
+        if opening.cancelled():
             return
-        session, _ = opening.result()
+        error = opening.exception()
+        if isinstance(error, _PlanFailed):
+            session = error.session
+        elif error is not None:
+            return
+        else:
+            session, _ = opening.result()
         # Off the event loop: close() flushes the SDK's observability thread over HTTP.
         asyncio.get_running_loop().run_in_executor(None, self._close_quietly, session)
 
@@ -181,18 +205,14 @@ class ArmorIQEnforcer:
             logger.warning("ArmorIQ session close failed", exc_info=True)
 
     def _open_plan(self, user_email: str, goal: str) -> tuple[GovernedSession, Any]:
-        """Blocking; runs in a worker thread."""
-        with self._plan_lock:
-            session = self._session_factory(user_email)
-            try:
-                # Every tool, declared once with no arguments: the plan names what the agent
-                # may try this call; the per-call arguments are judged by check().
-                token = session.start_plan(
-                    [{"name": n, "args": {}} for n in self._tool_names], goal
-                )
-            except Exception:
-                self._close_quietly(session)  # stop its observability thread
-                raise
+        """Blocking; runs on the plan thread."""
+        session = self._session_factory(user_email)
+        try:
+            # Every tool, declared once with no arguments: the plan names what the agent may
+            # try this call; the per-call arguments are judged by check().
+            token = session.start_plan([{"name": n, "args": {}} for n in self._tool_names], goal)
+        except Exception as exc:
+            raise _PlanFailed(session) from exc
         return session, token
 
     async def check(self, tool: str, arguments: dict[str, Any]) -> Verdict:

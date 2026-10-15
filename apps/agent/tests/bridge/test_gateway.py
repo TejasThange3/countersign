@@ -391,7 +391,7 @@ async def test_concurrent_waits_on_one_hold_run_the_tool_once() -> None:
     held = await gw.call("issue_refund", BIG_REFUND)
     first, second = await asyncio.gather(gw.wait(held, timeout_s=1), gw.wait(held, timeout_s=1))
     assert sorted([first.outcome, second.outcome]) == [Outcome.NOT_RUN, Outcome.RAN]
-    assert {first.reason, second.reason} == {"approved", "unknown_hold"}
+    assert {first.reason, second.reason} == {"approved", "wait_in_progress"}
     assert sum(1 for c in h.mcp.calls if c[0] == "issue_refund") == 1
 
 
@@ -631,3 +631,31 @@ async def test_wait_cancelled_while_queued_for_the_identity_lock_never_runs_late
     assert all(c[0] != "issue_refund" for c in h.mcp.calls)
     resolved = [e.data["resolution"] for e in h.events if e.kind == "hold_resolved"]
     assert resolved == ["cancelled"]
+
+
+async def test_call_cancelled_after_registering_a_hold_leaves_no_stale_hold() -> None:
+    def hold_everything_but_verify(tool: str, args: dict[str, object]) -> EnforceResult:
+        if tool == "verify_guest":
+            return EnforceResult(allowed=True, action="allow")
+        return EnforceResult(allowed=False, action="hold", delegation_id="d-9")
+
+    h = Harness(decide=hold_everything_but_verify)
+    gw = await h.open()
+    publishing = asyncio.Event()
+
+    async def stuck_sink(event: GatewayEvent) -> None:
+        h.events.append(event)
+        if event.kind == "tool_decided" and event.data.get("tool") == "get_hotel_info":
+            publishing.set()
+            await asyncio.Event().wait()  # the dashboard never answers
+
+    gw._events = stuck_sink
+    task = asyncio.create_task(gw.call("get_hotel_info", {}))
+    await publishing.wait()
+    task.cancel()  # the caller hangs up while the hold is being announced
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    gw._events = h._sink
+    verify = await gw.call("verify_guest", VERIFY)
+    assert verify.reason != "hold_pending"
+    assert verify.outcome is Outcome.RAN

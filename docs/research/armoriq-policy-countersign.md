@@ -112,5 +112,8 @@ nothing. `tests/bridge/conftest.py` now skips live tests unless `-m live` is giv
 After the review fixes (holds registered under the identity lock, run and report kept on the
 authorising session, reused approvals refused, one plan opened at a time), the proof ran
 again at 11:44:01Z (`20261015T114401Z-live-bridge.json`). It passed with the same decisions:
-payment row 21 was written for the approved $40, and nothing for the rejected $250. This is
-the run that matches the final code.
+payment row 21 was written for the approved $40, and nothing for the rejected $250. After
+the final reviewer fixes (plans opened on one dedicated thread, a stale hold dropped on
+hang-up), it ran once more at 11:55:51Z (`20261015T115551Z-live-bridge.json`). It passed with
+the same decisions (row 22 for the $40, nothing for the $250). That is the run that matches the
+final code.

@@ -8,6 +8,7 @@ import logging
 import threading
 import time
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from typing import ClassVar
 
 import pytest
@@ -141,7 +142,7 @@ class FakeSharedClientSession:
 
 async def test_concurrent_calls_never_mint_a_plan_for_another_identity() -> None:
     minted: list[tuple[str, str]] = []
-    lock = threading.Lock()
+    plan_thread = ThreadPoolExecutor(max_workers=1)  # one shared plan thread, as in production
 
     def enforcer() -> ArmorIQEnforcer:
         return ArmorIQEnforcer(
@@ -149,7 +150,7 @@ async def test_concurrent_calls_never_mint_a_plan_for_another_identity() -> None
             approvals=FakeApprovals(),
             tool_names=["get_hotel_info"],
             poll_seconds=0.01,
-            plan_lock=lock,
+            plan_executor=plan_thread,
         )
 
     await asyncio.gather(enforcer().start(UNVERIFIED, "a"), enforcer().start(GUEST, "b"))
@@ -306,7 +307,7 @@ async def test_cancelled_open_call_closes_mcp_and_the_late_armoriq_session() -> 
             approvals=FakeApprovals(),
             tool_names=tool_names,
             poll_seconds=0.01,
-            plan_lock=threading.Lock(),
+            plan_executor=ThreadPoolExecutor(max_workers=1),
         )
 
     factory = GovernedGatewayFactory(

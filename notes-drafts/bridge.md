@@ -53,16 +53,18 @@ phone call and sends every tool call through `gateway.call(name, args)`.
   call's tool calls run one at a time.
 - **One plan at a time per process.** The SDK mints a plan's token from one field on the
   shared client that every new session overwrites. If two phone calls started a plan at the
-  same moment, one could get a token for the other caller's identity, so "open session + start
-  plan" runs as a single step under a process-wide lock (`enforcer.PLAN_LOCK`).
+  same moment, one could get a token for the other caller's identity. So "open session + start
+  plan" runs as one step on a single dedicated thread (`enforcer.PLAN_EXECUTOR`), never on the
+  shared pool that every call's check, report and approval polls use.
 - **Tools** (`tools.py`, `executor.py`). `McpExecutor` talks to hotel-mcp over FastMCP's
   streamable HTTP client with the bearer token. Each MCP tool carries exactly one tier tag:
   read, write, money or sensitive. A tool without one is dropped and is never shown to the
   model. The bridge strips `guest_id` from the schemas the model sees, so the model can't
   even propose one.
 - **Masking** (`masking.py`). Every event and log line is masked before it leaves the bridge:
-  secrets and personal fields (`email`, `first_name`, `last_name`, `phone`, `guest_name`) are blanked, even
-  inside tool results that travel as JSON text, and any stray email address becomes `<email>`.
+  secrets and personal fields (`email`, `first_name`, `last_name`, `phone`, `guest_name`) are
+  blanked, even inside tool results that travel as JSON text, and any stray email address
+  becomes `<email>`.
   The model still sees the real tool result; only published copies are masked.
 - **Factory** (`factory.py`). Builds the ArmorIQ client lazily, in a worker thread. If the
   client can't be built (bad key, no network), the call gets an `UnavailableEnforcer` that
@@ -83,12 +85,15 @@ phone call and sends every tool call through `gateway.call(name, args)`.
 - **Reason codes are a contract** read by the evals lane: `verify_locked_out`, `not_verified`,
   `unknown_tool`, `hold_pending`, `other_guest`, `no_plan`, `enforce_error`,
   `armoriq_disabled`, `armoriq_unreachable` (plus `enforce_unavailable`,
-  `hold_without_delegation`, `approval_error`, `approval_reused`, `unknown_hold`, `approved`, `rejected`,
-  `timeout`). Count refusals by `reason`, not by `decision`. In particular,
-  `other_guest` comes back with `decision=allow, outcome=ran`: ArmorIQ allowed the lookup and
-  it ran, but the bridge keeps the call on the first guest and withholds the result. A second
-  `wait` on a hold that is already being waited on returns `unknown_hold`, so the tool can
-  never run twice.
+  `hold_without_delegation`, `approval_error`, `approval_reused`, `unknown_hold`,
+  `wait_in_progress`, `approved`, `rejected`, `timeout`). Count refusals by `reason`, not by
+  `decision`. In particular, `other_guest` comes back with `decision=allow, outcome=ran`,
+  because `verify_guest` really did run. ArmorIQ allowed it, the MCP looked up the other
+  guest, and the run was reported to ArmorIQ. What the bridge refuses is the identity switch:
+  the call stays on the first guest and the other guest's details are withheld. Reporting it
+  as BLOCK / NOT_RUN would misstate what ran. A second `wait` on a hold that is already being
+  waited on returns `wait_in_progress`: the first wait decides, so the tool can never run
+  twice.
 
 **Where it lives.** `apps/agent/src/countersign_agent/bridge/` (gateway, factory, enforcer,
 identity, tools, executor, approval, delegation, masking, redact, settings, armoriq_setup),
@@ -112,4 +117,4 @@ is the live proof). The policy is written down in
   You should see `1 passed`. The steps are: unverified refund BLOCK, verify ALLOW, $40 HOLD ->
   approved -> payment row written, $250 HOLD -> rejected -> no row, export BLOCK. It writes
   masked evidence to `apps/agent/tests/bridge/evidence/` (first passing run:
-  `20261015T110948Z-live-bridge.json`; the run on the final code is `20261015T114401Z-live-bridge.json`).
+  `20261015T110948Z-live-bridge.json`; the run on the final code is `20261015T115551Z-live-bridge.json`).

@@ -152,7 +152,13 @@ class GovernedGateway:
                     reason=verdict.reason,
                     latency_ms=verdict.latency_ms,
                 )
-            await self._emit_decided(name, verdict, plan_id)
+            try:
+                await self._emit_decided(name, verdict, plan_id)
+            except asyncio.CancelledError:
+                # Hung up before the hold reached the agent: nobody can wait on it, and a
+                # stale entry would refuse every later verify_guest.
+                self._pending.pop(verdict.delegation_id or "", None)
+                raise
 
             if verdict.decision in (Decision.ALLOW, Decision.HOLD) and unverified_guest_call:
                 # ArmorIQ was asked first (its block is the audit trail); the bridge still never
@@ -232,11 +238,16 @@ class GovernedGateway:
 
     async def wait(self, held: ToolResult, timeout_s: float = 60.0) -> ToolResult:
         pending = self._pending.get(held.delegation_id or "")
-        if (
-            held.outcome is not Outcome.PENDING
-            or pending is None
-            or pending.delegation_id in self._waiting
-        ):
+        if pending is not None and pending.delegation_id in self._waiting:
+            # Someone is already waiting on this hold; that wait decides it. Not a rejection.
+            return held.model_copy(
+                update={
+                    "outcome": Outcome.NOT_RUN,
+                    "reason": "wait_in_progress",
+                    "content": SAY_HELD,
+                }
+            )
+        if held.outcome is not Outcome.PENDING or pending is None:
             return held.model_copy(
                 update={
                     "outcome": Outcome.NOT_RUN,
