@@ -26,7 +26,23 @@ async def test_gateway_closes_when_pipeline_setup_fails(
     assert factory.opened[0].closed
 
 
-def test_whisper_gets_the_domain_vocabulary(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(
+    ("overrides", "prompt", "hotwords"),
+    [
+        ({}, None, None),  # off by default: a prompt broke distil-medium.en transcription
+        (
+            {"whisper_initial_prompt": "LRK-1001", "whisper_hotwords": "Okafor"},
+            "LRK-1001",
+            "Okafor",
+        ),
+    ],
+)
+def test_whisper_vocabulary_is_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+    overrides: dict[str, str],
+    prompt: str | None,
+    hotwords: str | None,
+) -> None:
     from pipecat.services.whisper import stt as whisper_stt
 
     built: dict[str, Any] = {}
@@ -38,7 +54,7 @@ def test_whisper_gets_the_domain_vocabulary(monkeypatch: pytest.MonkeyPatch) -> 
             built["settings"] = settings
 
     monkeypatch.setattr(whisper_stt, "WhisperSTTService", RecordingWhisper)
-    pipeline.make_stt(make_settings())
+    pipeline.make_stt(make_settings(**overrides))
 
-    assert "LRK-1001" in built["settings"].initial_prompt
-    assert "Okafor" in built["settings"].hotwords
+    assert built["settings"].initial_prompt == prompt
+    assert built["settings"].hotwords == hotwords

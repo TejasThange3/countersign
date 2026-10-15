@@ -72,15 +72,14 @@ class AgentSettings(BaseSettings):
     # distil-medium.en (~400 MB) fits a memory-tight dev box; distil-large-v3 is more accurate.
     whisper_model: str = "distil-medium.en"
     whisper_device: Literal["cuda", "cpu", "auto"] = "auto"
-    # Domain context for Whisper. Without it, "guest 1001" came out as "I guess. 101" and
-    # "booking 1001" as "booking $101" in a live test; verification needs exact references.
-    # `initial_prompt` is preceding text the decoder continues from; `hotwords` biases words.
-    whisper_initial_prompt: str = (
-        "Phone call to the front desk of The Larkspur hotel. The caller gives a booking "
-        "reference like LRK-1001, LRK-1002 or LRK-1007 and a last name like Okafor or "
-        "Brandt, and asks about rooms, a refund, a comp credit or check-in."
-    )
-    whisper_hotwords: str = "LRK Larkspur Okafor Brandt booking reference refund"
+    # Optional domain context for Whisper (`initial_prompt`: preceding text the decoder
+    # continues from; `hotwords`: words to bias towards). OFF by default, from a measurement:
+    # on a recorded call, distil-medium.en with a prompt cut "Do you have a room on November
+    # 2nd for two nights?" to "Do you have a room?" and live it returned nothing at all;
+    # hotwords alone raised no_speech_prob from 0.01 to 0.27 (Pipecat drops text at 0.4).
+    # Misheard numbers are handled by the agent reading references back instead.
+    whisper_initial_prompt: str = ""
+    whisper_hotwords: str = ""
     # Dev only: save each call's inbound (caller) audio as <dir>/<call_id>.wav to compare STT
     # models on the same speech. Off when unset. Records the microphone: own test calls only.
     debug_record_dir: Path | None = None
