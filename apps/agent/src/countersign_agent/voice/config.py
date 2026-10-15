@@ -48,8 +48,13 @@ class AgentSettings(BaseSettings):
 
     hold_timeout_s: float = Field(default=60.0, gt=0)
     hold_filler_interval_s: float = Field(default=6.0, gt=0)
-    # Spoken filler is synthesized once and cached here; without it a hold tone is played.
-    hold_filler_cache: Path = Path(".cache/hold_filler.pcm")
+    # Spoken filler is synthesized once and cached here (outside the repo, keyed by voice and
+    # model); without an ElevenLabs key a generated hold tone is played instead.
+    hold_filler_cache_dir: Path = Path.home() / ".cache" / "countersign"
+
+    def hold_filler_cache(self) -> Path:
+        name = f"hold_filler_{self.elevenlabs_voice_id}_{self.elevenlabs_tts_model}.pcm"
+        return self.hold_filler_cache_dir / name
 
     # Loopback by default; a deployment that must listen publicly sets AGENT_HOST explicitly.
     agent_host: str = "127.0.0.1"

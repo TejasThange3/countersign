@@ -11,7 +11,10 @@ from collections.abc import Callable
 from pipecat.frames.frames import LLMMessagesAppendFrame, TTSSpeakFrame
 from pipecat.pipeline.worker import PipelineWorker
 from pipecat.processors.aggregators.llm_context import LLMContext
-from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
+from pipecat.processors.aggregators.llm_response_universal import (
+    LLMContextAggregatorPair,
+    LLMUserAggregatorParams,
+)
 from pipecat.services.google.llm import GoogleLLMService
 from pipecat.services.llm_service import LLMService
 
@@ -75,12 +78,13 @@ class CallCore:
         output: PipelineCallOutput,
         *,
         llm_factory: LLMFactory = gemini_llm,
+        user_params: LLMUserAggregatorParams | None = None,
     ) -> None:
         self.call_id = call_id
         self.gateway = gateway
         self.output = output
         self.tool_results: list[ToolResult] = []
-        self.metrics = TurnMetricsRecorder(call_id)
+        self.metrics = TurnMetricsRecorder(call_id, turns_from_speech=user_params is not None)
         self.router = ToolRouter(
             gateway,
             output,
@@ -94,7 +98,8 @@ class CallCore:
         self.context = LLMContext(
             tools=build_tools_schema(gateway.tool_specs(), self.router.handle)
         )
-        self.aggregators = LLMContextAggregatorPair(self.context)
+        # Audio mode passes VAD params here; text mode has no audio to detect turns in.
+        self.aggregators = LLMContextAggregatorPair(self.context, user_params=user_params)
 
     async def close(self) -> None:
         """Hang up: cancel pending holds first so no held tool runs, then close the gateway."""

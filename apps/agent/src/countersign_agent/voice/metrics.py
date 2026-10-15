@@ -38,12 +38,20 @@ class TurnMetrics(BaseModel):
     models: list[str] = Field(default_factory=list)
 
 
+def _is_empty(turn: TurnMetrics) -> bool:
+    timings = (turn.stt_final_ms, turn.llm_ttft_ms, turn.tts_ttfb_ms, turn.user_to_bot_ms)
+    return not turn.models and all(value is None for value in timings)
+
+
 class TurnMetricsRecorder(BaseObserver):
     """Pipeline observer. Text mode starts turns itself with `start_turn()`."""
 
-    def __init__(self, call_id: str) -> None:
+    def __init__(self, call_id: str, *, turns_from_speech: bool = True) -> None:
         super().__init__()
         self._call_id = call_id
+        # Audio mode starts a turn when the caller starts speaking. Text mode starts turns
+        # itself, because context appends there also produce user-turn frames.
+        self._turns_from_speech = turns_from_speech
         self.turns: list[TurnMetrics] = []
         self._ttfat_turn: int | None = None
         self._user_stopped_at: float | None = None
@@ -56,6 +64,9 @@ class TurnMetricsRecorder(BaseObserver):
 
     def start_turn(self) -> TurnMetrics:
         if self.turns:
+            if _is_empty(self.turns[-1]):
+                # Nothing recorded yet (e.g. created by the pipeline's startup metrics).
+                return self.turns[-1]
             self._log(self.turns[-1])
         self.turns.append(TurnMetrics(turn=len(self.turns) + 1))
         return self.turns[-1]
@@ -78,7 +89,7 @@ class TurnMetricsRecorder(BaseObserver):
         if not data.first_push:
             return
 
-        if isinstance(frame, UserStartedSpeakingFrame):
+        if isinstance(frame, UserStartedSpeakingFrame) and self._turns_from_speech:
             self.start_turn()
         elif isinstance(frame, UserStoppedSpeakingFrame):
             self._user_stopped_at = time.monotonic()
