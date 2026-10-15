@@ -160,18 +160,22 @@ class FakeGateway:
 
     async def wait(self, held: ToolResult, timeout_s: float = 60.0) -> ToolResult:
         self.waits_started += 1
+        deadline_passed = False
         try:
             async with asyncio.timeout(min(timeout_s, self.approval_delay_s)):
                 await self._release.wait()
         except TimeoutError:
-            pass
+            # The approver had not answered by the caller's deadline: that is a timeout,
+            # whatever the approver would have said later.
+            deadline_passed = timeout_s < self.approval_delay_s
         except asyncio.CancelledError:
             self.waits_cancelled += 1
             raise
-        if self.hold_resolution == "approve":
+        if self.hold_resolution == "approve" and not deadline_passed:
             args = next((a for n, a in reversed(self.calls) if n == held.tool), {})
             return self._result(held.tool, Decision.HOLD, Outcome.RAN, "approved", args)
-        reason = "rejected" if self.hold_resolution == "reject" else "approval_timeout"
+        rejected = self.hold_resolution == "reject" and not deadline_passed
+        reason = "rejected" if rejected else "approval_timeout"
         return self._result(held.tool, Decision.HOLD, Outcome.NOT_RUN, reason)
 
     async def close(self) -> None:

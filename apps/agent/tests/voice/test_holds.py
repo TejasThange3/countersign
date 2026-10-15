@@ -308,6 +308,14 @@ async def test_handler_queued_during_hangup_never_reaches_gateway() -> None:
     assert late.results[0][0].startswith("CALL_ENDED")
 
 
+async def test_fake_wait_times_out_when_the_deadline_comes_before_approval() -> None:
+    gateway = FakeGateway("c1", approval_delay_s=30)
+    held = await gateway.call("issue_refund", REFUND_250)
+    result = await gateway.wait(held, timeout_s=0.01)
+    assert result.outcome is Outcome.NOT_RUN
+    assert result.reason == "approval_timeout"
+
+
 async def test_barge_in_cancels_a_read() -> None:
     gateway = CommitThenSlow("c1")
     output = RecordingOutput()
