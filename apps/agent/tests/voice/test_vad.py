@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 
+import numpy as np
 import pytest
 from countersign_agent.voice import vad as vad_module
 from countersign_agent.voice.vad import make_vad
@@ -27,7 +28,10 @@ def test_speech_like_seconds_are_logged(
 ) -> None:
     vad = make_vad(make_settings())
     vad.set_sample_rate(16000)
-    monkeypatch.setattr(vad_module.SileroVADAnalyzer, "voice_confidence", lambda _s, _b: 0.9)
+    # Silero really returns a numpy array; the log must still format.
+    monkeypatch.setattr(
+        vad_module.SileroVADAnalyzer, "voice_confidence", lambda _s, _b: np.array([[0.9]])
+    )
     clock = iter([100.0, 101.5])
     monkeypatch.setattr(vad_module.time, "monotonic", lambda: next(clock))
     vad._window_started = 100.0

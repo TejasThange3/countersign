@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import time
 
+import numpy as np
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
 
@@ -34,9 +35,11 @@ class MeasuredSileroVAD(SileroVADAnalyzer):
 
     def voice_confidence(self, buffer: bytes) -> float:
         confidence = super().voice_confidence(buffer)
+        # Silero returns a 1-element numpy array, not a float.
+        value = float(np.asarray(confidence).reshape(-1)[0])
         # `_prev_volume` is the smoothed loudness of the previous chunk: close enough here.
-        self._peak_confidence = max(self._peak_confidence, confidence)
-        self._peak_volume = max(self._peak_volume, self._prev_volume)
+        self._peak_confidence = max(self._peak_confidence, value)
+        self._peak_volume = max(self._peak_volume, float(self._prev_volume))
         now = time.monotonic()
         if now - self._window_started >= _LOG_WINDOW_S:
             if self._peak_confidence >= _LOG_CONFIDENCE_FLOOR:
