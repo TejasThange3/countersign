@@ -9,6 +9,7 @@ over it, which clears queued TTS audio and cancels a running LLM response.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -118,10 +119,14 @@ async def _run_pipeline(
     settings: AgentSettings,
     stt: STTService | None,
 ) -> None:
+    if stt is None:
+        # Building Whisper loads (and on first use downloads) the model synchronously. Off the
+        # event loop, so a slow load can't freeze every other call and the WebRTC handshake.
+        stt = await asyncio.to_thread(make_stt, settings)
     pipeline = Pipeline(
         [
             transport.input(),
-            stt or make_stt(settings),
+            stt,
             core.aggregators.user(),
             core.llm,
             make_tts(settings),
