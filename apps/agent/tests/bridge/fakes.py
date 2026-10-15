@@ -119,6 +119,8 @@ class FakeArmorIQSession:
         self.log.reports.append((tool_name, opts.status if opts else None))
 
     def close(self) -> None:
+        if self.log.fail_close:
+            raise RuntimeError("fake: session close failed")
         self.closed = True
 
 
@@ -128,6 +130,7 @@ class FakeArmorIQLog:
         self.checks: list[tuple[str, str, dict[str, Any]]] = []
         self.reports: list[tuple[str, str | None]] = []
         self.fail_plan = False
+        self.fail_close = False
         self.check_seconds = 0.0
 
 

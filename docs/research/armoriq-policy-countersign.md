@@ -103,3 +103,9 @@ live`, SDK 0.6.10).
 
 Plan ids: `49c05c4b…` for the unverified phase, and `d7c99bb4…` for the guest phase after
 the identity switch. The full ids are in the evidence file.
+
+A second, unplanned run at 11:11:41Z
+(`apps/agent/tests/bridge/evidence/20261015T111141Z-live-bridge.json`) happened because a
+plain `pytest` over `tests/bridge` didn't skip live tests at the time. Its decisions were the
+same. It wrote synthetic payment row 20 (the approved $40), and the rejected $250 again wrote
+nothing. `tests/bridge/conftest.py` now skips live tests unless `-m live` is given.

@@ -304,6 +304,20 @@ async def test_failed_replan_after_verify_fails_closed() -> None:
     result = await gw.call("issue_refund", REFUND)
     assert result.decision is Decision.UNAVAILABLE
     assert ("issue_refund", {**REFUND, "guest_id": GUEST_ID}) not in h.mcp.calls
+    assert all(s.closed for s in h.sessions)  # the half-built guest session is not leaked
+
+
+async def test_failed_session_close_does_not_break_the_replan() -> None:
+    h = Harness()
+    gw = await h.open()
+    h.log.fail_close = True
+    verify = await gw.call("verify_guest", VERIFY)
+    assert verify.outcome is Outcome.RAN
+    result = await gw.call("issue_refund", REFUND)
+    assert result.outcome is Outcome.RAN
+    assert h.log.plans[-1][0] == GUEST
+    h.log.fail_close = True
+    await gw.close()  # also swallowed (and logged) on hang-up
 
 
 async def test_unreachable_armoriq_fails_every_call_closed() -> None:
@@ -369,6 +383,16 @@ async def test_hold_rejected_or_timed_out_never_runs(
     assert result.content == say
     assert all(c[0] != "issue_refund" for c in h.mcp.calls)
     assert all(r[0] != "issue_refund" for r in h.log.reports)
+
+
+async def test_concurrent_waits_on_one_hold_run_the_tool_once() -> None:
+    h = Harness(approvals=FakeApprovals(["pending", "approved"]))
+    gw = await verified(h)
+    held = await gw.call("issue_refund", BIG_REFUND)
+    first, second = await asyncio.gather(gw.wait(held, timeout_s=1), gw.wait(held, timeout_s=1))
+    assert sorted([first.outcome, second.outcome]) == [Outcome.NOT_RUN, Outcome.RAN]
+    assert {first.reason, second.reason} == {"approved", "unknown_hold"}
+    assert sum(1 for c in h.mcp.calls if c[0] == "issue_refund") == 1
 
 
 async def test_approval_error_fails_closed() -> None:

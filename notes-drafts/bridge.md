@@ -47,7 +47,7 @@ phone call and sends every tool call through `gateway.call(name, args)`.
   model. The bridge strips `guest_id` from the schemas the model sees, so the model can't
   even propose one.
 - **Masking** (`masking.py`). Every event and log line is masked before it leaves the bridge:
-  secrets and personal fields (`email`, `last_name`, `phone`, `guest_name`) are blanked, even
+  secrets and personal fields (`email`, `first_name`, `last_name`, `phone`, `guest_name`) are blanked, even
   inside tool results that travel as JSON text, and any stray email address becomes `<email>`.
   The model still sees the real tool result; only published copies are masked.
 - **Factory** (`factory.py`). Builds the ArmorIQ client lazily, in a worker thread. If the
@@ -70,7 +70,11 @@ phone call and sends every tool call through `gateway.call(name, args)`.
   `unknown_tool`, `hold_pending`, `other_guest`, `no_plan`, `enforce_error`,
   `armoriq_disabled`, `armoriq_unreachable` (plus `enforce_unavailable`,
   `hold_without_delegation`, `approval_error`, `unknown_hold`, `approved`, `rejected`,
-  `timeout`).
+  `timeout`). Count refusals by `reason`, not by `decision`. In particular,
+  `other_guest` comes back with `decision=allow, outcome=ran`: ArmorIQ allowed the lookup and
+  it ran, but the bridge keeps the call on the first guest and withholds the result. A second
+  `wait` on a hold that is already being waited on returns `unknown_hold`, so the tool can
+  never run twice.
 
 **Where it lives.** `apps/agent/src/countersign_agent/bridge/` (gateway, factory, enforcer,
 identity, tools, executor, approval, delegation, masking, redact, settings, armoriq_setup),
@@ -81,7 +85,8 @@ is the live proof). The policy is written down in
 
 **How to check it works.**
 - Unit tests: `uv run --project apps/agent pytest -q apps/agent/tests/bridge`. They should all
-  pass, and the live test is skipped.
+  pass, and the live test shows as skipped (`tests/bridge/conftest.py` only lets it run with
+  `-m live`).
 - By hand: start hotel-mcp, then run
   `uv run --project apps/agent python -m countersign_agent.cli_text`. Try `specs`, then
   `call issue_refund {"amount": 40}`: it is blocked while you are unverified. Then

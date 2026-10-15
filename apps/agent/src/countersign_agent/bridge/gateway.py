@@ -97,6 +97,9 @@ class GovernedGateway:
         self._masker = masker
         self._events = events
         self._pending: dict[str, _Pending] = {}
+        # Holds someone is already waiting on. The hold stays in _pending meanwhile (so verify
+        # is still refused under it), but a second wait must not run the tool a second time.
+        self._waiting: set[str] = set()
         # Serialises identity changes against checks: a check never runs half-way through a
         # re-plan, and the injected guest_id always matches the ArmorIQ identity.
         self._identity_lock = asyncio.Lock()
@@ -178,6 +181,8 @@ class GovernedGateway:
                 return await self._finish(
                     self._result(name, verdict, Outcome.NOT_RUN, say, plan_id)
                 )
+            # Defence in depth: the current policy never holds an unverified caller's tools,
+            # but if a policy change ever did, a re-plan here would orphan that approval.
             if self._pending and not self._identity.verified:
                 return await self._refuse(name, R_HOLD_PENDING, SAY_HOLD_PENDING, verdict, plan_id)
 
@@ -219,7 +224,11 @@ class GovernedGateway:
 
     async def wait(self, held: ToolResult, timeout_s: float = 60.0) -> ToolResult:
         pending = self._pending.get(held.delegation_id or "")
-        if held.outcome is not Outcome.PENDING or pending is None:
+        if (
+            held.outcome is not Outcome.PENDING
+            or pending is None
+            or pending.delegation_id in self._waiting
+        ):
             return held.model_copy(
                 update={
                     "outcome": Outcome.NOT_RUN,
@@ -227,6 +236,14 @@ class GovernedGateway:
                     "content": SAY_BLOCKED,
                 }
             )
+        # No await between the check above and this claim, so two waits can't both pass.
+        self._waiting.add(pending.delegation_id)
+        try:
+            return await self._wait_claimed(pending, timeout_s)
+        finally:
+            self._waiting.discard(pending.delegation_id)
+
+    async def _wait_claimed(self, pending: _Pending, timeout_s: float) -> ToolResult:
         verdict = Verdict(
             decision=Decision.HOLD,
             reason=pending.reason,

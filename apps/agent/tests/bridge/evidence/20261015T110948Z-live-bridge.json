@@ -24,7 +24,7 @@
       "tool": "verify_guest",
       "decision": "allow",
       "outcome": "ran",
-      "content": "{\"verified\": true, \"first_name\": \"Amara\", \"bookings\": [{\"booking_id\": 1, \"ref\": \"LRK-1001\", \"check_in\": \"2026-11-07\", \"check_out\": \"2026-11-11\", \"status\": \"confirmed\"}]}",
+      "content": "{\"verified\": true, \"first_name\": \"<masked>\", \"bookings\": [{\"booking_id\": 1, \"ref\": \"LRK-1001\", \"check_in\": \"2026-11-07\", \"check_out\": \"2026-11-11\", \"status\": \"confirmed\"}]}",
       "reason": "enforcement_passed",
       "policy": "countersign",
       "plan_id": "49c05c4b-2ad5-49f5-b7bc-54e112262fa6",
@@ -211,7 +211,7 @@
         "decision": "allow",
         "outcome": "ran",
         "reason": "enforcement_passed",
-        "content": "{\"verified\": true, \"first_name\": \"Amara\", \"bookings\": [{\"booking_id\": 1, \"ref\": \"LRK-1001\", \"check_in\": \"2026-11-07\", \"check_out\": \"2026-11-11\", \"status\": \"confirmed\"}]}",
+        "content": "{\"verified\": true, \"first_name\": \"<masked>\", \"bookings\": [{\"booking_id\": 1, \"ref\": \"LRK-1001\", \"check_in\": \"2026-11-07\", \"check_out\": \"2026-11-11\", \"status\": \"confirmed\"}]}",
         "plan_id": "49c05c4b-2ad5-49f5-b7bc-54e112262fa6",
         "delegation_id": null,
         "latency_ms": 9294.5

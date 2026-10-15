@@ -135,6 +135,7 @@ class ArmorIQEnforcer:
             await self._close_session(old)
         self._user_email = user_email
         started = time.perf_counter()
+        session: GovernedSession | None = None
         try:
             session = await asyncio.to_thread(self._session_factory, user_email)
             # Every tool, declared once with no arguments: the plan names what the agent may
@@ -144,6 +145,8 @@ class ArmorIQEnforcer:
             )
         except Exception:
             logger.exception("ArmorIQ session/plan failed; every check will fail closed")
+            if session is not None:
+                await self._close_session(session)  # stop its observability thread
             return _ms_since(started)
         self._session = session
         self.plan_id = getattr(token, "plan_id", None)
@@ -202,8 +205,12 @@ class ArmorIQEnforcer:
             self._session = None
 
     async def _close_session(self, session: GovernedSession) -> None:
-        # Flushes the SDK's observability thread; documented as never throwing.
-        await asyncio.to_thread(session.close)
+        # Flushes the SDK's observability thread. Documented as never throwing, but a failure
+        # here must not turn a finished verify (or a hang-up) into a crash.
+        try:
+            await asyncio.to_thread(session.close)
+        except Exception:
+            logger.warning("ArmorIQ session close failed", exc_info=True)
 
 
 class DisabledEnforcer:

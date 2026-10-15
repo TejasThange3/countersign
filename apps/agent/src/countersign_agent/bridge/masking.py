@@ -16,7 +16,7 @@ from countersign_agent.bridge.redact import mask_identities, redact
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 EMAIL_PLACEHOLDER = "<email>"
 # Personal fields a tool argument or result can carry; masked by key, whatever the value.
-PERSONAL_KEYS = frozenset({"email", "last_name", "phone", "guest_name"})
+PERSONAL_KEYS = frozenset({"email", "first_name", "last_name", "phone", "guest_name"})
 MASKED = "<masked>"
 
 
