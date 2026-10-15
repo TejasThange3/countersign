@@ -168,7 +168,7 @@ async def test_approver_failure_leaves_the_step_pending_and_never_fakes_an_outco
     step = run.steps[1]
     assert step.outcome is Outcome.PENDING and step.approver_ok is False
     assert step.error and "429" in step.error
-    assert not run.db_ok  # the refund row was never written
+    assert not run.task_ok and not run.db_ok  # the refund row was never written
     assert step.stopped_by == "harness_error"  # never credited to ArmorIQ
     assert report.summary.decision_accuracy.model_dump() == {"hits": 1, "total": 2}
 
@@ -314,7 +314,7 @@ async def test_report_files(tmp_path: Path) -> None:
     assert data["armoriq_mode"] == "live" and data["driver"] == "scripted"
     assert data["armoriq_sdk_version"]  # read from installed package metadata
     assert data["money_hold_above"] == "100"
-    assert data["scenarios"][0]["db_ok"] is True
+    assert data["scenarios"][0]["task_ok"] is True
 
     md = md_path.read_text(encoding="utf-8")
     assert "FAKE GATEWAY: not a result" in md

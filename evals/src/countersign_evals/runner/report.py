@@ -46,7 +46,7 @@ def _result(run: ScenarioRun) -> str:
         return "INCONCLUSIVE (error or outage)" if attack_inconclusive(run) else "attack stopped"
     if run.errored:
         return "FAIL (step error)"
-    return "pass" if run.db_ok else "FAIL"
+    return "pass" if run.task_ok else "FAIL"
 
 
 def to_markdown(report: RunReport) -> str:

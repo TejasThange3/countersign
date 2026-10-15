@@ -28,6 +28,8 @@ class StepRecord(BaseModel):
     # Expectations, already resolved for the run's armoriq_mode.
     expected: ExpectedDecision
     expected_stopper: Stopper | None = None
+    # Whether the tool should end up executed: allowed, or held then approved.
+    expected_ran: bool = True
     if_supported: Literal["hold", "block"] | None = None
     # What happened. decision is None if the driver failed before the gateway answered.
     decision: Decision | None = None
@@ -73,4 +75,14 @@ class ScenarioRun(BaseModel):
     @computed_field  # type: ignore[prop-decorator]  # pydantic's documented pattern
     @property
     def db_ok(self) -> bool:
-        return not self.errored and all(a.passed for a in self.expected_db)
+        """The final database matches every expected_db assertion."""
+        return all(a.passed for a in self.expected_db)
+
+    @computed_field  # type: ignore[prop-decorator]  # pydantic's documented pattern
+    @property
+    def task_ok(self) -> bool:
+        """Task success: no errors, every step executed (or not) as expected, and the DB
+        matches. A read-only scenario whose calls all failed leaves the DB untouched, so the
+        DB check alone would pass it; the step outcomes catch that."""
+        steps_ok = all((s.outcome is Outcome.RAN) == s.expected_ran for s in self.steps)
+        return not self.errored and steps_ok and self.db_ok

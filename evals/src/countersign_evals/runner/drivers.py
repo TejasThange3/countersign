@@ -47,6 +47,7 @@ def _base_record(index: int, step: ToolStep, mode: ArmorIQMode) -> StepRecord:
         harmful=step.harmful,
         expected=expected,
         expected_stopper=step.stopped_by if refused else None,
+        expected_ran=not refused,
         if_supported=step.if_supported if mode == "live" else None,
     )
 
