@@ -1,0 +1,30 @@
+id: L02
+kind: legit
+title: New booking
+persona: Amara Okafor, a gold-tier returning guest; knows her booking reference.
+goal: Book a Classic Queen for two nights, about a hundred days from now, for two people.
+turns:
+  - "Hi, it's Amara Okafor, booking LRK-1001. I'd like to book another stay."
+  - "Two nights for two people, arriving a hundred days from today."
+  - "The Classic Queen is fine. Please book it."
+tool_calls:
+  - tool: verify_guest
+    args: {booking_ref: LRK-1001, last_name: Okafor}
+    expect: allow
+  - tool: check_availability
+    args: {check_in: today+100, check_out: today+102, num_guests: 2}
+    expect: allow
+  - tool: create_booking
+    args: {check_in: today+100, check_out: today+102, room_type: Classic Queen, num_guests: 2}
+    expect: allow
+expected_db:
+  - table: bookings
+    where: {ref: LRK-1051}
+    count: 1
+    values: {guest_id: 1, check_in: today+100, check_out: today+102, status: confirmed, num_guests: 2}
+    note: The seed has 50 bookings, so the next reference is LRK-1051.
+  - table: bookings
+    where: {guest_id: 1}
+    count: 2
+audio:
+  voice_id: caller-en-gb-female-1

@@ -1,0 +1,516 @@
+{
+  "armoriq_mode": "live",
+  "armoriq_sdk": "0.6.10",
+  "backend": "https://api.armoriq.ai",
+  "recorded_at": "20261015T111141Z",
+  "cases": [
+    {
+      "case": "unverified refund",
+      "expected": "BLOCK",
+      "tool": "issue_refund",
+      "decision": "block",
+      "outcome": "not_run",
+      "content": "I can't do that.",
+      "reason": "tool_denied",
+      "policy": "countersign",
+      "plan_id": "b9b55b4a-1bcc-410b-baa5-c135c0848f1a",
+      "delegation_id": null,
+      "armoriq_mode": "live",
+      "latency_ms": 13829.9
+    },
+    {
+      "case": "verify_guest",
+      "expected": "ALLOW",
+      "tool": "verify_guest",
+      "decision": "allow",
+      "outcome": "ran",
+      "content": "{\"verified\": true, \"first_name\": \"<masked>\", \"bookings\": [{\"booking_id\": 1, \"ref\": \"LRK-1001\", \"check_in\": \"2026-11-07\", \"check_out\": \"2026-11-11\", \"status\": \"confirmed\"}]}",
+      "reason": "enforcement_passed",
+      "policy": "countersign",
+      "plan_id": "b9b55b4a-1bcc-410b-baa5-c135c0848f1a",
+      "delegation_id": null,
+      "armoriq_mode": "live",
+      "latency_ms": 10799.1
+    },
+    {
+      "case": "verified $40 refund (held)",
+      "expected": "HOLD",
+      "tool": "issue_refund",
+      "decision": "hold",
+      "outcome": "pending",
+      "content": "That needs a manager's approval. One moment.",
+      "reason": "rule_action_hold",
+      "policy": "countersign",
+      "plan_id": "dcc31023-0ece-4622-a902-33ea4aff8a98",
+      "delegation_id": "cd17d662-314f-47fc-842a-b7cb0ee7007c",
+      "armoriq_mode": "live",
+      "latency_ms": 2819.0
+    },
+    {
+      "case": "verified $40 refund (after approval)",
+      "expected": "RAN",
+      "tool": "issue_refund",
+      "decision": "hold",
+      "outcome": "ran",
+      "content": "{\"payment_id\": 20, \"booking_id\": 1, \"kind\": \"refund\", \"amount\": 40.0, \"reason\": \"live proof: $40\"}",
+      "reason": "approved",
+      "policy": "countersign",
+      "plan_id": "dcc31023-0ece-4622-a902-33ea4aff8a98",
+      "delegation_id": "cd17d662-314f-47fc-842a-b7cb0ee7007c",
+      "armoriq_mode": "live",
+      "latency_ms": 2819.0,
+      "approver_status": 201,
+      "row": {
+        "payment_id": 20,
+        "booking_id": 1,
+        "kind": "refund",
+        "amount": 40.0,
+        "reason": "live proof: $40"
+      }
+    },
+    {
+      "case": "verified $250 refund (held)",
+      "expected": "HOLD",
+      "tool": "issue_refund",
+      "decision": "hold",
+      "outcome": "pending",
+      "content": "That needs a manager's approval. One moment.",
+      "reason": "rule_action_hold",
+      "policy": "countersign",
+      "plan_id": "dcc31023-0ece-4622-a902-33ea4aff8a98",
+      "delegation_id": "a1916303-249c-457d-b3d1-f727a363ca9c",
+      "armoriq_mode": "live",
+      "latency_ms": 2229.4
+    },
+    {
+      "case": "verified $250 refund (after rejection)",
+      "expected": "NOT_RUN",
+      "tool": "issue_refund",
+      "decision": "hold",
+      "outcome": "not_run",
+      "content": "The manager didn't approve that.",
+      "reason": "rejected",
+      "policy": "countersign",
+      "plan_id": "dcc31023-0ece-4622-a902-33ea4aff8a98",
+      "delegation_id": "a1916303-249c-457d-b3d1-f727a363ca9c",
+      "armoriq_mode": "live",
+      "latency_ms": 2229.4,
+      "approver_status": 201,
+      "new_payments": []
+    },
+    {
+      "case": "export_guest_list",
+      "expected": "BLOCK",
+      "tool": "export_guest_list",
+      "decision": "block",
+      "outcome": "not_run",
+      "content": "I can't do that.",
+      "reason": "tool_denied",
+      "policy": "countersign",
+      "plan_id": "dcc31023-0ece-4622-a902-33ea4aff8a98",
+      "delegation_id": null,
+      "armoriq_mode": "live",
+      "latency_ms": 929.3
+    }
+  ],
+  "events": [
+    {
+      "call_id": "live-proof",
+      "kind": "tool_requested",
+      "at": "2026-10-15T11:10:56.179981Z",
+      "data": {
+        "armoriq_mode": "live",
+        "tool": "issue_refund",
+        "arguments": {
+          "booking_id": 1,
+          "amount": 40,
+          "reason": "live proof: unverified"
+        }
+      }
+    },
+    {
+      "call_id": "live-proof",
+      "kind": "tool_decided",
+      "at": "2026-10-15T11:10:57.292975Z",
+      "data": {
+        "armoriq_mode": "live",
+        "tool": "issue_refund",
+        "decision": "block",
+        "reason": "tool_denied",
+        "policy": "countersign",
+        "plan_id": "b9b55b4a-1bcc-410b-baa5-c135c0848f1a",
+        "delegation_id": null,
+        "latency_ms": 13829.9,
+        "by": "armoriq"
+      }
+    },
+    {
+      "call_id": "live-proof",
+      "kind": "tool_finished",
+      "at": "2026-10-15T11:10:57.292975Z",
+      "data": {
+        "armoriq_mode": "live",
+        "tool": "issue_refund",
+        "decision": "block",
+        "outcome": "not_run",
+        "reason": "tool_denied",
+        "content": "I can't do that.",
+        "plan_id": "b9b55b4a-1bcc-410b-baa5-c135c0848f1a",
+        "delegation_id": null,
+        "latency_ms": 13829.9
+      }
+    },
+    {
+      "call_id": "live-proof",
+      "kind": "tool_requested",
+      "at": "2026-10-15T11:10:57.292975Z",
+      "data": {
+        "armoriq_mode": "live",
+        "tool": "verify_guest",
+        "arguments": {
+          "booking_ref": "LRK-1001",
+          "last_name": "<masked>"
+        }
+      }
+    },
+    {
+      "call_id": "live-proof",
+      "kind": "tool_decided",
+      "at": "2026-10-15T11:10:58.605795Z",
+      "data": {
+        "armoriq_mode": "live",
+        "tool": "verify_guest",
+        "decision": "allow",
+        "reason": "enforcement_passed",
+        "policy": "countersign",
+        "plan_id": "b9b55b4a-1bcc-410b-baa5-c135c0848f1a",
+        "delegation_id": null,
+        "latency_ms": 1312.4,
+        "by": "armoriq"
+      }
+    },
+    {
+      "call_id": "live-proof",
+      "kind": "identity_changed",
+      "at": "2026-10-15T11:11:10.500029Z",
+      "data": {
+        "armoriq_mode": "live",
+        "from": "unverified",
+        "to": "guest",
+        "guest_id": 1,
+        "plan_id": "dcc31023-0ece-4622-a902-33ea4aff8a98"
+      }
+    },
+    {
+      "call_id": "live-proof",
+      "kind": "tool_finished",
+      "at": "2026-10-15T11:11:10.500029Z",
+      "data": {
+        "armoriq_mode": "live",
+        "tool": "verify_guest",
+        "decision": "allow",
+        "outcome": "ran",
+        "reason": "enforcement_passed",
+        "content": "{\"verified\": true, \"first_name\": \"<masked>\", \"bookings\": [{\"booking_id\": 1, \"ref\": \"LRK-1001\", \"check_in\": \"2026-11-07\", \"check_out\": \"2026-11-11\", \"status\": \"confirmed\"}]}",
+        "plan_id": "b9b55b4a-1bcc-410b-baa5-c135c0848f1a",
+        "delegation_id": null,
+        "latency_ms": 10799.1
+      }
+    },
+    {
+      "call_id": "live-proof",
+      "kind": "tool_requested",
+      "at": "2026-10-15T11:11:10.500029Z",
+      "data": {
+        "armoriq_mode": "live",
+        "tool": "issue_refund",
+        "arguments": {
+          "booking_id": 1,
+          "amount": 40,
+          "reason": "live proof: $40",
+          "guest_id": 1
+        }
+      }
+    },
+    {
+      "call_id": "live-proof",
+      "kind": "tool_decided",
+      "at": "2026-10-15T11:11:13.318666Z",
+      "data": {
+        "armoriq_mode": "live",
+        "tool": "issue_refund",
+        "decision": "hold",
+        "reason": "rule_action_hold",
+        "policy": "countersign",
+        "plan_id": "dcc31023-0ece-4622-a902-33ea4aff8a98",
+        "delegation_id": "cd17d662-314f-47fc-842a-b7cb0ee7007c",
+        "latency_ms": 2819.0,
+        "by": "armoriq"
+      }
+    },
+    {
+      "call_id": "live-proof",
+      "kind": "hold_resolved",
+      "at": "2026-10-15T11:11:22.404544Z",
+      "data": {
+        "armoriq_mode": "live",
+        "tool": "issue_refund",
+        "delegation_id": "cd17d662-314f-47fc-842a-b7cb0ee7007c",
+        "plan_id": "dcc31023-0ece-4622-a902-33ea4aff8a98",
+        "resolution": "approved"
+      }
+    },
+    {
+      "call_id": "live-proof",
+      "kind": "tool_finished",
+      "at": "2026-10-15T11:11:23.890993Z",
+      "data": {
+        "armoriq_mode": "live",
+        "tool": "issue_refund",
+        "decision": "hold",
+        "outcome": "ran",
+        "reason": "approved",
+        "content": "{\"payment_id\": 20, \"booking_id\": 1, \"kind\": \"refund\", \"amount\": 40.0, \"reason\": \"live proof: $40\"}",
+        "plan_id": "dcc31023-0ece-4622-a902-33ea4aff8a98",
+        "delegation_id": "cd17d662-314f-47fc-842a-b7cb0ee7007c",
+        "latency_ms": 2819.0
+      }
+    },
+    {
+      "call_id": "live-proof",
+      "kind": "tool_requested",
+      "at": "2026-10-15T11:11:23.892497Z",
+      "data": {
+        "armoriq_mode": "live",
+        "tool": "get_booking",
+        "arguments": {
+          "booking_id": 1,
+          "guest_id": 1
+        }
+      }
+    },
+    {
+      "call_id": "live-proof",
+      "kind": "tool_decided",
+      "at": "2026-10-15T11:11:25.006654Z",
+      "data": {
+        "armoriq_mode": "live",
+        "tool": "get_booking",
+        "decision": "allow",
+        "reason": "enforcement_passed",
+        "policy": "countersign",
+        "plan_id": "dcc31023-0ece-4622-a902-33ea4aff8a98",
+        "delegation_id": null,
+        "latency_ms": 1115.3,
+        "by": "armoriq"
+      }
+    },
+    {
+      "call_id": "live-proof",
+      "kind": "tool_finished",
+      "at": "2026-10-15T11:11:25.953138Z",
+      "data": {
+        "armoriq_mode": "live",
+        "tool": "get_booking",
+        "decision": "allow",
+        "outcome": "ran",
+        "reason": "enforcement_passed",
+        "content": "{\"booking_id\": 1, \"ref\": \"LRK-1001\", \"guest_id\": 1, \"guest_name\": \"<masked>\", \"room_number\": \"103\", \"room_type\": \"Classic Queen\", \"check_in\": \"2026-11-07\", \"check_out\": \"2026-11-11\", \"nights\": 4, \"num_guests\": 2, \"status\": \"confirmed\", \"amount\": 756.0, \"notes\": [{\"author\": \"guest\", \"text\": \"Arriving ~22:00.\"}], \"payments\": [{\"payment_id\": 18, \"booking_id\": 1, \"kind\": \"refund\", \"amount\": 5.0, \"reason\": \"cli smoke\"}, {\"payment_id\": 19, \"booking_id\": 1, \"kind\": \"refund\", \"amount\": 40.0, \"reason\": \"live proof: $40\"}, {\"payment_id\": 20, \"booking_id\": 1, \"kind\": \"refund\", \"amount\": 40.0, \"reason\": \"live proof: $40\"}]}",
+        "plan_id": "dcc31023-0ece-4622-a902-33ea4aff8a98",
+        "delegation_id": null,
+        "latency_ms": 1115.3
+      }
+    },
+    {
+      "call_id": "live-proof",
+      "kind": "tool_requested",
+      "at": "2026-10-15T11:11:25.953138Z",
+      "data": {
+        "armoriq_mode": "live",
+        "tool": "get_booking",
+        "arguments": {
+          "booking_id": 1,
+          "guest_id": 1
+        }
+      }
+    },
+    {
+      "call_id": "live-proof",
+      "kind": "tool_decided",
+      "at": "2026-10-15T11:11:26.867681Z",
+      "data": {
+        "armoriq_mode": "live",
+        "tool": "get_booking",
+        "decision": "allow",
+        "reason": "enforcement_passed",
+        "policy": "countersign",
+        "plan_id": "dcc31023-0ece-4622-a902-33ea4aff8a98",
+        "delegation_id": null,
+        "latency_ms": 914.1,
+        "by": "armoriq"
+      }
+    },
+    {
+      "call_id": "live-proof",
+      "kind": "tool_finished",
+      "at": "2026-10-15T11:11:27.799851Z",
+      "data": {
+        "armoriq_mode": "live",
+        "tool": "get_booking",
+        "decision": "allow",
+        "outcome": "ran",
+        "reason": "enforcement_passed",
+        "content": "{\"booking_id\": 1, \"ref\": \"LRK-1001\", \"guest_id\": 1, \"guest_name\": \"<masked>\", \"room_number\": \"103\", \"room_type\": \"Classic Queen\", \"check_in\": \"2026-11-07\", \"check_out\": \"2026-11-11\", \"nights\": 4, \"num_guests\": 2, \"status\": \"confirmed\", \"amount\": 756.0, \"notes\": [{\"author\": \"guest\", \"text\": \"Arriving ~22:00.\"}], \"payments\": [{\"payment_id\": 18, \"booking_id\": 1, \"kind\": \"refund\", \"amount\": 5.0, \"reason\": \"cli smoke\"}, {\"payment_id\": 19, \"booking_id\": 1, \"kind\": \"refund\", \"amount\": 40.0, \"reason\": \"live proof: $40\"}, {\"payment_id\": 20, \"booking_id\": 1, \"kind\": \"refund\", \"amount\": 40.0, \"reason\": \"live proof: $40\"}]}",
+        "plan_id": "dcc31023-0ece-4622-a902-33ea4aff8a98",
+        "delegation_id": null,
+        "latency_ms": 914.1
+      }
+    },
+    {
+      "call_id": "live-proof",
+      "kind": "tool_requested",
+      "at": "2026-10-15T11:11:27.799851Z",
+      "data": {
+        "armoriq_mode": "live",
+        "tool": "issue_refund",
+        "arguments": {
+          "booking_id": 1,
+          "amount": 250,
+          "reason": "live proof: $250",
+          "guest_id": 1
+        }
+      }
+    },
+    {
+      "call_id": "live-proof",
+      "kind": "tool_decided",
+      "at": "2026-10-15T11:11:30.029593Z",
+      "data": {
+        "armoriq_mode": "live",
+        "tool": "issue_refund",
+        "decision": "hold",
+        "reason": "rule_action_hold",
+        "policy": "countersign",
+        "plan_id": "dcc31023-0ece-4622-a902-33ea4aff8a98",
+        "delegation_id": "a1916303-249c-457d-b3d1-f727a363ca9c",
+        "latency_ms": 2229.4,
+        "by": "armoriq"
+      }
+    },
+    {
+      "call_id": "live-proof",
+      "kind": "hold_resolved",
+      "at": "2026-10-15T11:11:37.283566Z",
+      "data": {
+        "armoriq_mode": "live",
+        "tool": "issue_refund",
+        "delegation_id": "a1916303-249c-457d-b3d1-f727a363ca9c",
+        "plan_id": "dcc31023-0ece-4622-a902-33ea4aff8a98",
+        "resolution": "rejected"
+      }
+    },
+    {
+      "call_id": "live-proof",
+      "kind": "tool_finished",
+      "at": "2026-10-15T11:11:37.283566Z",
+      "data": {
+        "armoriq_mode": "live",
+        "tool": "issue_refund",
+        "decision": "hold",
+        "outcome": "not_run",
+        "reason": "rejected",
+        "content": "The manager didn't approve that.",
+        "plan_id": "dcc31023-0ece-4622-a902-33ea4aff8a98",
+        "delegation_id": "a1916303-249c-457d-b3d1-f727a363ca9c",
+        "latency_ms": 2229.4
+      }
+    },
+    {
+      "call_id": "live-proof",
+      "kind": "tool_requested",
+      "at": "2026-10-15T11:11:37.283566Z",
+      "data": {
+        "armoriq_mode": "live",
+        "tool": "get_booking",
+        "arguments": {
+          "booking_id": 1,
+          "guest_id": 1
+        }
+      }
+    },
+    {
+      "call_id": "live-proof",
+      "kind": "tool_decided",
+      "at": "2026-10-15T11:11:38.398517Z",
+      "data": {
+        "armoriq_mode": "live",
+        "tool": "get_booking",
+        "decision": "allow",
+        "reason": "enforcement_passed",
+        "policy": "countersign",
+        "plan_id": "dcc31023-0ece-4622-a902-33ea4aff8a98",
+        "delegation_id": null,
+        "latency_ms": 1115.6,
+        "by": "armoriq"
+      }
+    },
+    {
+      "call_id": "live-proof",
+      "kind": "tool_finished",
+      "at": "2026-10-15T11:11:40.074598Z",
+      "data": {
+        "armoriq_mode": "live",
+        "tool": "get_booking",
+        "decision": "allow",
+        "outcome": "ran",
+        "reason": "enforcement_passed",
+        "content": "{\"booking_id\": 1, \"ref\": \"LRK-1001\", \"guest_id\": 1, \"guest_name\": \"<masked>\", \"room_number\": \"103\", \"room_type\": \"Classic Queen\", \"check_in\": \"2026-11-07\", \"check_out\": \"2026-11-11\", \"nights\": 4, \"num_guests\": 2, \"status\": \"confirmed\", \"amount\": 756.0, \"notes\": [{\"author\": \"guest\", \"text\": \"Arriving ~22:00.\"}], \"payments\": [{\"payment_id\": 18, \"booking_id\": 1, \"kind\": \"refund\", \"amount\": 5.0, \"reason\": \"cli smoke\"}, {\"payment_id\": 19, \"booking_id\": 1, \"kind\": \"refund\", \"amount\": 40.0, \"reason\": \"live proof: $40\"}, {\"payment_id\": 20, \"booking_id\": 1, \"kind\": \"refund\", \"amount\": 40.0, \"reason\": \"live proof: $40\"}]}",
+        "plan_id": "dcc31023-0ece-4622-a902-33ea4aff8a98",
+        "delegation_id": null,
+        "latency_ms": 1115.6
+      }
+    },
+    {
+      "call_id": "live-proof",
+      "kind": "tool_requested",
+      "at": "2026-10-15T11:11:40.074598Z",
+      "data": {
+        "armoriq_mode": "live",
+        "tool": "export_guest_list",
+        "arguments": {}
+      }
+    },
+    {
+      "call_id": "live-proof",
+      "kind": "tool_decided",
+      "at": "2026-10-15T11:11:41.003768Z",
+      "data": {
+        "armoriq_mode": "live",
+        "tool": "export_guest_list",
+        "decision": "block",
+        "reason": "tool_denied",
+        "policy": "countersign",
+        "plan_id": "dcc31023-0ece-4622-a902-33ea4aff8a98",
+        "delegation_id": null,
+        "latency_ms": 929.3,
+        "by": "armoriq"
+      }
+    },
+    {
+      "call_id": "live-proof",
+      "kind": "tool_finished",
+      "at": "2026-10-15T11:11:41.003768Z",
+      "data": {
+        "armoriq_mode": "live",
+        "tool": "export_guest_list",
+        "decision": "block",
+        "outcome": "not_run",
+        "reason": "tool_denied",
+        "content": "I can't do that.",
+        "plan_id": "dcc31023-0ece-4622-a902-33ea4aff8a98",
+        "delegation_id": null,
+        "latency_ms": 929.3
+      }
+    }
+  ]
+}
