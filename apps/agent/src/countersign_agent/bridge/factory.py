@@ -1,7 +1,7 @@
 """Builds one GovernedGateway per phone call. Implements contracts.GatewayFactory.
 
-The ArmorIQ client is built once per process, lazily, off the event loop (its constructor and
-bootstrap are blocking HTTP). Each call gets its own MCP connection, tool discovery and
+The ArmorIQ client is built once per process, lazily, off the event loop (its constructor
+checks the key over blocking HTTP). Each call gets its own MCP connection, tool discovery and
 ArmorIQ session.
 """
 
@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
-from typing import Any
 
 from armoriq_sdk import ArmorIQClient
 
@@ -53,7 +52,7 @@ class GovernedGatewayFactory:
             self._enforcer_factory = self._disabled_enforcer
         else:
             self._enforcer_factory = self._armoriq_enforcer
-        self._client: tuple[ArmorIQClient, dict[str, Any]] | None = None
+        self._client: ArmorIQClient | None = None
         self._client_lock = asyncio.Lock()
 
     async def open_call(self, call_id: str, events: EventSink | None = None) -> GovernedGateway:
@@ -88,20 +87,20 @@ class GovernedGatewayFactory:
 
     async def _armoriq_enforcer(self, tool_names: list[str]) -> Enforcer:
         try:
-            client, bootstrap = await self._armoriq_client()
+            client = await self._armoriq_client()
         except Exception:
             # Not cached: the next call tries again.
             logger.exception("ArmorIQ client unavailable; this call fails closed")
             return UnavailableEnforcer()
         settings = self.settings
         return ArmorIQEnforcer(
-            session_factory=lambda email: start_user_session(client, bootstrap, settings, email),
+            session_factory=lambda email: start_user_session(client, settings, email),
             approvals=CheckedApprovals(client),
             tool_names=tool_names,
             poll_seconds=settings.armoriq_approval_poll_seconds,
         )
 
-    async def _armoriq_client(self) -> tuple[ArmorIQClient, dict[str, Any]]:
+    async def _armoriq_client(self) -> ArmorIQClient:
         async with self._client_lock:
             if self._client is None:
                 self._client = await asyncio.to_thread(build_client, self.settings)

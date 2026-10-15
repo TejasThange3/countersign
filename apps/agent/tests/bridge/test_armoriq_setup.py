@@ -1,16 +1,8 @@
 from countersign_agent.bridge.armoriq_setup import make_tool_name_parser
 
 
-def test_tool_map_wins() -> None:
-    parse = make_tool_name_parser({"toolMap": {"issue_refund": "hotel-mcp"}}, "default-mcp")
-    assert parse("issue_refund") == ("hotel-mcp", "issue_refund")
-
-
-def test_double_underscore_prefix_names_the_mcp() -> None:
-    parse = make_tool_name_parser({}, "default-mcp")
-    assert parse("other-mcp__get_hotel_info") == ("other-mcp", "get_hotel_info")
-
-
-def test_falls_back_to_default_mcp() -> None:
-    parse = make_tool_name_parser({"toolMap": None}, "hotel-mcp")
-    assert parse("get_hotel_info") == ("hotel-mcp", "get_hotel_info")
+def test_every_tool_is_pinned_to_the_configured_mcp() -> None:
+    # Even a tool a leftover test server also registers goes to the configured MCP.
+    parse = make_tool_name_parser("hotel-mcp-2")
+    assert parse("issue_refund") == ("hotel-mcp-2", "issue_refund")
+    assert parse("verify_guest") == ("hotel-mcp-2", "verify_guest")
