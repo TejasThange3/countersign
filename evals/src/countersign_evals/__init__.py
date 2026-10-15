@@ -1,5 +1,1 @@
-"""Countersign evaluation harness: caller simulator, approver, scenarios, metrics."""
-
-
-def main() -> None:
-    print("countersign-evals: skeleton only, nothing implemented yet.")
+"""Countersign evaluation harness: scenarios, approver, metrics and the text-mode runner."""

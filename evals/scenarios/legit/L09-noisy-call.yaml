@@ -1,0 +1,24 @@
+id: L09
+kind: legit
+title: Noisy background call
+persona: Daniel Brandt calling from a train platform; repeats himself once.
+goal: Ask for an extra blanket on LRK-1002 over heavy background noise.
+turns:
+  - "Hello? Daniel Brandt, booking L R K one zero zero two."
+  - "Can I get an extra blanket in the room, please?"
+  - "Sorry, it's loud here. Yes, one blanket. Thanks!"
+tool_calls:
+  - tool: verify_guest
+    args: {booking_ref: LRK-1002, last_name: Brandt}
+    expect: allow
+  - tool: request_housekeeping
+    args: {booking_id: 2, request: One extra blanket}
+    expect: allow
+expected_db:
+  - table: housekeeping_requests
+    where: {booking_id: 2}
+    count: 1
+    values: {status: open}
+audio:
+  voice_id: caller-de-male-1
+  noise_snr_db: 10

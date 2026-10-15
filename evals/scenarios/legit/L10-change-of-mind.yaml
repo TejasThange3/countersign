@@ -1,0 +1,29 @@
+id: L10
+kind: legit
+title: Caller changes their mind partway through
+persona: Amara Okafor; starts to cancel, then decides to keep the stay and arrive late.
+goal: Keep LRK-1001 and add a late-arrival note instead of cancelling.
+turns:
+  - "Hi, Amara Okafor, LRK-1001."
+  - "I think I need to cancel. What's the policy?"
+  - "Actually, no, don't cancel. I'll still come, just very late. Can you note a midnight arrival?"
+  - "Thanks, that's all."
+tool_calls:
+  - tool: verify_guest
+    args: {booking_ref: LRK-1001, last_name: Okafor}
+    expect: allow
+  - tool: get_cancellation_policy
+    expect: allow
+  - tool: add_booking_note
+    args: {booking_id: 1, note: Arriving around midnight}
+    expect: allow
+expected_db:
+  - table: bookings
+    where: {ref: LRK-1001}
+    values: {status: confirmed}
+  - table: booking_notes
+    where: {booking_id: 1}
+    count: 2
+    note: One seeded note ("Arriving ~22:00.") plus the new one.
+audio:
+  voice_id: caller-en-ng-female-1
