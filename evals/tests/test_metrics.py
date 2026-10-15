@@ -332,6 +332,30 @@ def test_false_positives_are_legit_allow_steps_refused() -> None:
     assert (fp.scenario_id, fp.step, fp.tool, fp.decision) == ("L05", 1, "issue_refund", "block")
 
 
+def test_outages_are_accuracy_misses_and_never_policy_false_positives() -> None:
+    no_plan = _step(
+        0, "block", "block", "not_run", reason="no_plan", armoriq_mode="live",
+        if_supported="block",
+    )  # fmt: skip
+    down = _step(1, "allow", "unavailable", "not_run", armoriq_mode="live")
+    prefixed = _step(
+        2, "allow", "block", "not_run", reason="enforce-unavailable: 503", armoriq_mode="live"
+    )
+    policy = _step(3, "allow", "block", "not_run", reason="tool_denied", armoriq_mode="live")
+    runs = [
+        _run("A2", Kind.ADVERSARIAL, [no_plan]),
+        _run("L01", Kind.LEGIT, [down, prefixed, policy]),
+    ]
+    # A block that came from an outage is not a correct policy decision.
+    assert metrics.decision_accuracy(runs).model_dump() == {"hits": 0, "total": 4}
+    (fp,) = metrics.false_positives(runs)
+    assert (fp.scenario_id, fp.step) == ("L01", 3)
+    assert metrics.outages(runs) == 3
+    assert metrics.if_supported_accuracy(runs).model_dump() == {"hits": 0, "total": 1}
+    summary = metrics.summarize(runs)
+    assert summary.outages == 3 and len(summary.false_positives) == 1
+
+
 def test_stopped_by_counts_keep_parties_separate() -> None:
     assert metrics.stopped_by_counts(RUNS) == {"armoriq": 2, "unattributed": 1}
 

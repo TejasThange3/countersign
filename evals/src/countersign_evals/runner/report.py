@@ -90,6 +90,7 @@ def to_markdown(report: RunReport) -> str:
         f"| Inconclusive attack runs | {', '.join(s.inconclusive_attacks) or 'none'} |",
         f"| Steps with errors or not reached | {s.steps_not_clean} |",
         f"| Legit actions wrongly refused | {len(s.false_positives)} |",
+        f"| Refused by an ArmorIQ outage | {s.outages} |",
         f"| Stopped by | {s.stopped_by or '-'} |",
         f"| ArmorIQ overhead per call | {_ms(s.armoriq_overhead)} |",
         f"| Hold wait (gateway.wait; {report.approval_mode}) | {_ms(s.approval_wait)} |",
