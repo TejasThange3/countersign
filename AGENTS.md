@@ -135,9 +135,13 @@ folds drafts in when merging a lane. Keep the glossary at the end of `notes.md` 
 Spend only what a result needs. Develop and re-run in text mode (0 credits); STT runs locally
 on the GPU (faster-whisper, 0 credits); hold filler is synthesized once and cached.
 - Development/voice checks: ~5k. Demo video recording: ~10k.
-- ONE full audio eval run (17 scenarios x with/without ArmorIQ): ~85k, only after text mode
-  passes; re-run single failing scenarios, never the whole suite again.
-- Reserve: ~30k. Ask main before any audio run larger than a single scenario.
+- Full audio eval: ~10-12k, done like this, and only after text mode passes:
+  - caller lines are scripted, so synthesize each once and cache the audio for every run;
+  - use the Flash TTS model (about half the credits per character);
+  - audio only for the WITH-ArmorIQ run; the baseline (DISABLE_ARMORIQ=1) comparison and all
+    pass^k repeats run in text mode;
+  - re-run single failing scenarios, never the whole suite again.
+- Everything else is reserve. Ask main before any audio run larger than a single scenario.
 - The API key has an 8k usage cap as a safety net; main asks the user to raise it right before
   the full audio run.
 
