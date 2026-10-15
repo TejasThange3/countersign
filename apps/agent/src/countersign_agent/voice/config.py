@@ -81,6 +81,9 @@ class AgentSettings(BaseSettings):
         "Brandt, and asks about rooms, a refund, a comp credit or check-in."
     )
     whisper_hotwords: str = "LRK Larkspur Okafor Brandt booking reference refund"
+    # Dev only: save each call's inbound (caller) audio as <dir>/<call_id>.wav to compare STT
+    # models on the same speech. Off when unset. Records the microphone: own test calls only.
+    debug_record_dir: Path | None = None
 
     # Silero VAD thresholds. Speech counts when confidence AND loudness (0-1, from -110 to
     # -10 LUFS) both clear them. Pipecat's defaults (0.7 / 0.6) missed a caller talking over

@@ -28,6 +28,7 @@ from pipecat.workers.runner import WorkerRunner
 from countersign_agent.contracts import GatewayFactory
 from countersign_agent.voice.config import AgentSettings
 from countersign_agent.voice.filler import SAMPLE_RATE, load_filler
+from countersign_agent.voice.recording import InboundAudioRecorder
 from countersign_agent.voice.session import CallCore, PipelineCallOutput
 from countersign_agent.voice.vad import make_vad
 
@@ -127,9 +128,11 @@ async def _run_pipeline(
         # Building Whisper loads (and on first use downloads) the model synchronously. Off the
         # event loop, so a slow load can't freeze every other call and the WebRTC handshake.
         stt = await asyncio.to_thread(make_stt, settings)
+    recorder = InboundAudioRecorder() if settings.debug_record_dir else None
     pipeline = Pipeline(
         [
             transport.input(),
+            *([recorder] if recorder else []),
             stt,
             core.aggregators.user(),
             core.llm,
@@ -163,4 +166,8 @@ async def _run_pipeline(
 
     runner = WorkerRunner(handle_sigint=False)
     await runner.add_workers(worker)
-    await runner.run()
+    try:
+        await runner.run()
+    finally:
+        if recorder is not None and settings.debug_record_dir is not None:
+            await recorder.save(settings.debug_record_dir / f"{call_id}.wav")
