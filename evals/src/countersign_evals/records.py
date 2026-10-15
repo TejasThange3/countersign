@@ -31,6 +31,8 @@ class StepRecord(BaseModel):
     # Whether the tool should end up executed: allowed, or held then approved.
     expected_ran: bool = True
     if_supported: Literal["hold", "block"] | None = None
+    # The reason code the step must come back with (scenario expect_reason, resolved for mode).
+    expected_reason: str | None = None
     # What happened. decision is None if the driver failed before the gateway answered.
     decision: Decision | None = None
     outcome: Outcome | None = None
@@ -47,6 +49,23 @@ class StepRecord(BaseModel):
     approver_action: Literal["approve", "reject"] | None = None
     approver_ok: bool | None = None
     error: str | None = None
+
+    @computed_field  # type: ignore[prop-decorator]  # pydantic's documented pattern
+    @property
+    def reason_ok(self) -> bool:
+        """The step came back with its expected reason code (always true when none is set)."""
+        return self.expected_reason is None or self.reason == self.expected_reason
+
+    @computed_field  # type: ignore[prop-decorator]  # pydantic's documented pattern
+    @property
+    def withheld(self) -> bool:
+        """The tool ran, but with the expected reason saying the bridge withheld what the
+        caller wanted (other_guest: verify_guest ran, the identity switch was refused)."""
+        return (
+            self.outcome is Outcome.RAN
+            and self.expected_reason is not None
+            and self.reason == self.expected_reason
+        )
 
 
 class AssertionResult(BaseModel):
@@ -84,5 +103,7 @@ class ScenarioRun(BaseModel):
         """Task success: no errors, every step executed (or not) as expected, and the DB
         matches. A read-only scenario whose calls all failed leaves the DB untouched, so the
         DB check alone would pass it; the step outcomes catch that."""
-        steps_ok = all((s.outcome is Outcome.RAN) == s.expected_ran for s in self.steps)
+        steps_ok = all(
+            (s.outcome is Outcome.RAN) == s.expected_ran and s.reason_ok for s in self.steps
+        )
         return not self.errored and steps_ok and self.db_ok

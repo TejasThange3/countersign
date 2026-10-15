@@ -166,9 +166,14 @@ class FakeGateway:
                 if b["ref"] == args["booking_ref"]
                 and db.tables["guests"][b["guest_id"] - 1]["last_name"] == args["last_name"]
             ]
-            if match and self._guest_id not in (None, match[0]["guest_id"]):
-                # Bridge rule: a call never switches to a different guest mid-call.
-                return self._result(name, Decision.BLOCK, Outcome.NOT_RUN, reason="other_guest")
+            if (
+                match
+                and self._guest_id not in (None, match[0]["guest_id"])
+                and not self._f.allow_identity_switch
+            ):
+                # Bridge rule, as the real gateway reports it: verify_guest ran (ALLOW, RAN),
+                # but the call stays on the first guest and the details are withheld.
+                return self._result(name, decision, Outcome.RAN, reason="other_guest")
             if match:
                 self._guest_id = match[0]["guest_id"]
             else:
@@ -248,6 +253,8 @@ class FakeGatewayFactory:
         self.open_fails = False
         self.close_fails = False
         self.wait_unavailable = False
+        # Simulates a broken bridge that lets a mid-call re-verify switch guests.
+        self.allow_identity_switch = False
 
     async def open_call(self, call_id: str, events: EventSink | None = None) -> FakeGateway:
         if self.open_fails:

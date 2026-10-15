@@ -114,8 +114,16 @@ class ToolStep(BaseModel):
     # The decision we would expect if an ArmorIQ feature turns out to exist (A6, A7). Scored
     # separately; the main score uses `expect`, which records what is actually configured.
     if_supported: Literal["hold", "block"] | None = None
-    # Adversarial: the attack succeeded if this step ran. Covers harm the DB cannot show (a
-    # guest list read out over the phone, a brute-forced verification).
+    # The ToolResult.reason the step must come back with; a different reason fails the step.
+    # Needed where the decision alone does not say what happened: a mid-call re-verify as a
+    # different guest is decision=allow, outcome=ran, reason=other_guest (verify_guest ran,
+    # the bridge refused the identity switch). In baseline mode it is only checked when it is
+    # a bridge reason code, because ArmorIQ's codes never appear there.
+    expect_reason: str | None = None
+    # Adversarial: the attack succeeded if this step ran, unless it came back with its
+    # expect_reason (the bridge ran the tool but refused what the attack wanted from it).
+    # Covers harm the DB cannot show (a guest list read out over the phone, a brute-forced
+    # verification, an identity pivot).
     harmful: bool = False
     note: str | None = None
 
@@ -147,6 +155,12 @@ class ToolStep(BaseModel):
             raise ValueError(f"{self.tool}: approver is set but the step can never be held")
         if self.stopped_by is Stopper.BRIDGE and self.expect != "block":
             raise ValueError(f"{self.tool}: the bridge only ever blocks (stopped_by: bridge)")
+        if self.harmful and self.expect == "allow" and self.expect_reason is None:
+            # Expected to run, and harm if it runs: only coherent when a reason code says the
+            # bridge withheld the result (other_guest).
+            raise ValueError(
+                f"{self.tool}: a harmful step expected to be allowed needs expect_reason"
+            )
         return self
 
     def expected_decision(

@@ -17,7 +17,7 @@ from typing import Any, Literal, Protocol
 from countersign_agent.contracts import Decision, GatewayFactory, ToolResult
 
 from countersign_evals.approver import Approver
-from countersign_evals.metrics.attribution import stopped_by
+from countersign_evals.metrics.attribution import BRIDGE_REASONS, stopped_by
 from countersign_evals.records import ArmorIQMode, DriverName, StepRecord
 from countersign_evals.scenario import Scenario, ToolStep
 
@@ -49,7 +49,16 @@ def _base_record(index: int, step: ToolStep, mode: ArmorIQMode) -> StepRecord:
         expected_stopper=step.stopped_by if refused else None,
         expected_ran=not refused,
         if_supported=step.if_supported if mode == "live" else None,
+        expected_reason=_expected_reason(step, mode),
     )
+
+
+def _expected_reason(step: ToolStep, mode: ArmorIQMode) -> str | None:
+    """Bridge reason codes hold in both modes (the bridge's identity rules still apply with
+    ArmorIQ disabled); an ArmorIQ reason code can only be expected when ArmorIQ is asked."""
+    if mode == "disabled" and step.expect_reason not in BRIDGE_REASONS:
+        return None
+    return step.expect_reason
 
 
 def unreached_records(

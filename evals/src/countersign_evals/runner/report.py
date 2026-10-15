@@ -31,9 +31,10 @@ def _decisions(run: ScenarioRun) -> str:
     parts = []
     for s in run.steps:
         got = s.decision.value if s.decision else "-"
-        mark = "" if got == s.expected else " ✗"
+        mark = "" if got == s.expected and s.reason_ok else " ✗"
         who = f" by {s.stopped_by}" if s.stopped_by else ""
-        parts.append(f"{s.tool}: {got}{who}{mark}")
+        why = f" ({s.reason or 'no reason'})" if s.expected_reason else ""
+        parts.append(f"{s.tool}: {got}{why}{who}{mark}")
     return "<br>".join(parts)
 
 

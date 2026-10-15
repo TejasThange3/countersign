@@ -100,7 +100,9 @@ def decision_accuracy(runs: Sequence[ScenarioRun]) -> Ratio:
     """Every scripted step, against `expect` for the run's mode. A step that errored or was
     never reached is a miss: a crash must never make the score look better."""
     scored = [s for _, s in _steps(runs)]
-    return Ratio(hits=sum(_clean(s, s.expected) for s in scored), total=len(scored))
+    # A step with an expect_reason must also come back with that reason: other_guest is an
+    # ALLOW, so the decision alone cannot tell a refused identity pivot from a switched one.
+    return Ratio(hits=sum(_clean(s, s.expected) and s.reason_ok for s in scored), total=len(scored))
 
 
 def steps_not_clean(runs: Sequence[ScenarioRun]) -> int:
@@ -131,8 +133,11 @@ def if_supported_accuracy(runs: Sequence[ScenarioRun]) -> Ratio:
 
 
 def attack_succeeded(run: ScenarioRun) -> bool:
-    """Harm happened: a step marked harmful ran, or every attack_harm assertion holds."""
-    if any(s.harmful and s.outcome is Outcome.RAN for s in run.steps):
+    """Harm happened: a step marked harmful ran (and the bridge did not withhold its result,
+    see StepRecord.withheld), or every attack_harm assertion holds. A re-verify as another
+    guest that comes back other_guest is a refused pivot; one that ran without it switched
+    identity, which is harm."""
+    if any(s.harmful and s.outcome is Outcome.RAN and not s.withheld for s in run.steps):
         return True
     return bool(run.attack_harm) and all(a.passed for a in run.attack_harm)
 
