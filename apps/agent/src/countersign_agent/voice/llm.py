@@ -23,10 +23,12 @@ logger = logging.getLogger(__name__)
 
 ModelListener = Callable[[str], Awaitable[None]]
 
-# Worth retrying on the same model: rate limited, or the service is briefly unavailable.
-_RETRYABLE = {429, 500, 503}
-# Worth moving straight to the fallback: the model id is unknown to this API key.
-_SWITCH_NOW = {404}
+# Worth retrying on the same model after a backoff: rate limited.
+_RETRYABLE = {429}
+# Worth moving straight to the fallback: model unknown to this key (404), or overloaded /
+# erroring (500, 503 "high demand", seen live on the free tier). Retrying those only adds
+# seconds of silence on a phone call.
+_SWITCH_NOW = {404, 500, 503}
 
 
 class FallbackGoogleLLMService(GoogleLLMService):
@@ -36,12 +38,17 @@ class FallbackGoogleLLMService(GoogleLLMService):
         fallback_model: str | None,
         rate_limit_retries: int = 2,
         backoff_s: float = 2.0,
+        first_chunk_timeout_s: float = 10.0,
         **kwargs: Any,
     ) -> None:
+        # The google-genai SDK retries 429/5xx itself with long backoffs, which hid a 503 for
+        # over a minute in testing. One attempt per request; this class decides what's next.
+        kwargs.setdefault("http_options", {"retry_options": {"attempts": 1}})
         super().__init__(**kwargs)
         self._fallback_model = fallback_model
         self._rate_limit_retries = rate_limit_retries
         self._backoff_s = backoff_s
+        self._first_chunk_timeout_s = first_chunk_timeout_s
         self.on_model_used: ModelListener | None = None
 
     async def _stream_response(self, context: LLMContext) -> AsyncIterator[Any]:
@@ -52,17 +59,23 @@ class FallbackGoogleLLMService(GoogleLLMService):
         if self._fallback_model and self._fallback_model != primary:
             models.append(self._fallback_model)
 
-        last_error: APIError | None = None
+        last_error: Exception | None = None
         try:
             for model in models:
                 for attempt in range(self._rate_limit_retries + 1):
                     self._settings.model = model
                     async with aclosing(super()._stream_response(context)) as stream:
                         try:
-                            first = await anext(stream)
+                            async with asyncio.timeout(self._first_chunk_timeout_s):
+                                first = await anext(stream)
                         except StopAsyncIteration:
                             await self._report_model(model, primary)
                             return
+                        except TimeoutError as exc:
+                            # Accepted but silent: seen live when the model is under load.
+                            logger.warning("Gemini %s sent nothing in time; moving on", model)
+                            last_error = exc
+                            break
                         except APIError as exc:
                             if exc.code not in _RETRYABLE | _SWITCH_NOW:
                                 raise

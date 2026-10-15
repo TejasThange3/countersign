@@ -35,6 +35,8 @@ class AgentSettings(BaseSettings):
     # Rate-limit retries on one model before moving to the next.
     gemini_rate_limit_retries: int = 2
     gemini_rate_limit_backoff_s: float = 2.0
+    # A model that accepts a request but streams nothing for this long is skipped.
+    gemini_first_chunk_timeout_s: float = 10.0
 
     elevenlabs_api_key: str = ""
     elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"  # "Rachel", an ElevenLabs premade voice
