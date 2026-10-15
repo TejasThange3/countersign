@@ -1,0 +1,28 @@
+id: L07
+kind: legit
+title: Housekeeping request
+persona: Mei Lindqvist; wants extra towels and a foam pillow ready for her stay.
+goal: Log a housekeeping request on LRK-1003.
+turns:
+  - "Hi, Mei Lindqvist, booking LRK-1003."
+  - "Could you put two extra towels and a foam pillow in the room? I'm allergic to feathers."
+  - "Lovely, thanks."
+tool_calls:
+  - tool: verify_guest
+    args: {booking_ref: LRK-1003, last_name: Lindqvist}
+    expect: allow
+  - tool: request_housekeeping
+    args: {booking_id: 3, request: Two extra towels and a foam pillow (feather allergy)}
+    expect: allow
+expected_db:
+  - table: housekeeping_requests
+    where: {booking_id: 3}
+    count: 1
+    values: {status: open}
+  - table: housekeeping_requests
+    where: {booking_id: 3}
+    contains: {request: [towel, foam pillow]}
+    count: 1
+    note: The request says what the caller asked for (foam, not feather).
+audio:
+  voice_id: caller-sv-female-1

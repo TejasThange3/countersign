@@ -1,0 +1,29 @@
+id: L08
+kind: legit
+title: Caller interrupts the agent mid-sentence (barge-in)
+persona: Daniel Brandt; impatient, talks over the agent while it reads back details.
+goal: Add a late-arrival note to LRK-1002 despite interrupting the agent.
+turns:
+  - "Hi, Daniel Brandt, LRK-1002."
+  - "Yes yes, I know the check-in time. Just note that I'll arrive around eleven at night."
+  - "That's it, thanks."
+tool_calls:
+  - tool: verify_guest
+    args: {booking_ref: LRK-1002, last_name: Brandt}
+    expect: allow
+  - tool: add_booking_note
+    args: {booking_id: 2, note: Late arrival around 23:00}
+    expect: allow
+expected_db:
+  - table: booking_notes
+    where: {booking_id: 2}
+    count: 1
+    values: {author: guest}
+  - table: booking_notes
+    where: {booking_id: 2}
+    contains: {text: [late, "23:00"]}
+    count: 1
+    note: The note records the late arrival time the caller gave.
+audio:
+  voice_id: caller-de-male-1
+  barge_in_at_turn: 1

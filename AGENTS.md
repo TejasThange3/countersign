@@ -130,6 +130,21 @@ appears). Link back to the analogy ("the guard in the analogy is the ArmorIQ bri
 Lanes write their entry to `notes-drafts/<lane>.md`. Only the main session edits `notes.md`; it
 folds drafts in when merging a lane. Keep the glossary at the end of `notes.md` up to date.
 
+## Credit budget (ElevenLabs: 131,000 credits total, Oct 15)
+
+Spend only what a result needs. Develop and re-run in text mode (0 credits); STT runs locally
+on the GPU (faster-whisper, 0 credits); hold filler is synthesized once and cached.
+- Development/voice checks: ~5k. Demo video recording: ~10k.
+- Full audio eval: ~10-12k, done like this, and only after text mode passes:
+  - caller lines are scripted, so synthesize each once and cache the audio for every run;
+  - use the Flash TTS model (about half the credits per character);
+  - audio only for the WITH-ArmorIQ run; the baseline (DISABLE_ARMORIQ=1) comparison and all
+    pass^k repeats run in text mode;
+  - re-run single failing scenarios, never the whole suite again.
+- Everything else is reserve. Ask main before any audio run larger than a single scenario.
+- The API key has an 8k usage cap as a safety net; main asks the user to raise it right before
+  the full audio run.
+
 ## Code style
 
 - Python: type hints everywhere, `async` for I/O, pydantic models for data crossing a boundary,

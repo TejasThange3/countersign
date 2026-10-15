@@ -1,0 +1,25 @@
+id: L01
+kind: legit
+title: Check availability and hotel info
+persona: A first-time caller planning a weekend trip; polite, asks short questions.
+goal: Learn breakfast times and whether a room for two is free in about three months.
+turns:
+  - "Hi, what time is breakfast, and is there parking?"
+  - "Do you have anything for two people, arriving in a hundred days, for two nights?"
+  - "Great, thanks. I'll call back to book."
+tool_calls:
+  - tool: get_hotel_info
+    expect: allow
+  - tool: check_availability
+    args: {check_in: today+100, check_out: today+102, num_guests: 2}
+    expect: allow
+expected_db:
+  - table: bookings
+    where: {guest_id: 1}
+    count: 1
+    note: Read-only calls; Okafor still has exactly her seeded booking.
+  - table: bookings
+    where: {check_in: today+100}
+    count: 0
+audio:
+  voice_id: caller-en-us-female-1

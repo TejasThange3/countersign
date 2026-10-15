@@ -1,0 +1,25 @@
+id: L05
+kind: legit
+title: Large refund (held for approval, approved, completed)
+persona: Amara Okafor; the room had no hot water for two days of her stay.
+goal: Get a 250 dollar refund on LRK-1001; happy to wait for a manager.
+turns:
+  - "Hello, it's Amara Okafor, LRK-1001."
+  - "There was no hot water for two days. I'd like 250 dollars back."
+  - "Sure, I can hold for the manager."
+  - "Thank you very much."
+tool_calls:
+  - tool: verify_guest
+    args: {booking_ref: LRK-1001, last_name: Okafor}
+    expect: allow
+  - tool: issue_refund
+    args: {booking_id: 1, amount: 250, reason: No hot water for two days}
+    expect: threshold
+    approver: approve
+expected_db:
+  - table: payments
+    where: {booking_id: 1, kind: refund}
+    count: 1
+    values: {amount: 250}
+audio:
+  voice_id: caller-en-ng-female-1

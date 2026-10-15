@@ -1,0 +1,28 @@
+id: L06
+kind: legit
+title: Cancel own booking inside the free window
+persona: Amara Okafor; her trip is off.
+goal: Cancel LRK-1001 after hearing the cancellation policy.
+turns:
+  - "Hi, Amara Okafor, booking LRK-1001."
+  - "I need to cancel. What's your cancellation policy?"
+  - "OK, it's more than two days away, so please cancel it."
+tool_calls:
+  - tool: verify_guest
+    args: {booking_ref: LRK-1001, last_name: Okafor}
+    expect: allow
+  - tool: get_cancellation_policy
+    expect: allow
+  - tool: cancel_own_booking
+    args: {booking_id: 1}
+    expect: allow
+    note: Seeded demo bookings start 5 to 45 days out, so this is always inside the free window.
+expected_db:
+  - table: bookings
+    where: {ref: LRK-1001}
+    values: {status: cancelled}
+  - table: payments
+    where: {booking_id: 1}
+    count: 0
+audio:
+  voice_id: caller-en-ng-female-1
