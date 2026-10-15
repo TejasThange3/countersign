@@ -112,6 +112,16 @@ async def test_last_model_gets_the_longer_wait(monkeypatch: pytest.MonkeyPatch) 
     assert chunks == ["slow"] and used == [FALLBACK]
 
 
+def test_pipecat_stream_timeout_does_not_cut_the_last_model_short() -> None:
+    service = FallbackGoogleLLMService(
+        api_key="fake-key",
+        settings=GoogleLLMService.Settings(model=PRIMARY),
+        fallback_model=FALLBACK,
+        last_model_timeout_s=30.0,
+    )
+    assert service._stream_idle_timeout_secs > 30.0
+
+
 async def test_failed_primary_is_skipped_during_cooldown(monkeypatch: pytest.MonkeyPatch) -> None:
     service, requested = make_service(monkeypatch, {PRIMARY: [503], FALLBACK: ["a", "b"]})
     await collect(service)

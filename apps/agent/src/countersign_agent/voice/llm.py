@@ -64,6 +64,11 @@ class FallbackGoogleLLMService(GoogleLLMService):
         # The google-genai SDK retries 429/5xx itself with long backoffs, which hid a 503 for
         # over a minute in testing. One attempt per request; this class decides what's next.
         kwargs.setdefault("http_options", {"retry_options": {"attempts": 1}})
+        # Pipecat's own stream timeout (20 s by default) would cut the last model's longer
+        # first-chunk wait short; keep it just above ours so this class decides.
+        kwargs.setdefault(
+            "stream_idle_timeout_secs", max(last_model_timeout_s, first_chunk_timeout_s) + 5
+        )
         super().__init__(**kwargs)
         self._fallback_model = fallback_model
         self._rate_limit_retries = rate_limit_retries
