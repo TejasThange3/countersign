@@ -37,6 +37,10 @@ answers the same questions by chat instead of by phone: same brain, same hatch, 
   (most seconds under 0.3), while the caller talking over it scored 0.94–0.99, so the 0.7
   confidence gate is what stops the bot interrupting itself. The VAD logs its peak values each
   second there is speech-like audio, so tuning uses numbers, not guesses.
+- **Recording for STT comparisons** (`voice/recording.py`, dev only). `DEBUG_RECORD_DIR` saves
+  the caller's audio per call so two STT models can be compared on the same speech. It is the
+  caller's real voice, which is personal data: keep the directory outside the repo, never
+  commit it, and delete the files once the comparison is done.
 - **Tools come only from the gateway.** `voice/tools.py` turns each `ToolSpec` from
   `gateway.tool_specs()` into a Pipecat `FunctionSchema`. Every one has the same handler,
   `ToolRouter.handle`, which calls `gateway.call(...)`. There is no other path to a tool: this is

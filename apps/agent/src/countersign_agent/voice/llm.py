@@ -18,6 +18,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import aclosing
 from typing import Any
 
+import httpx
 from google.genai.errors import APIError
 from openai import (
     APIConnectionError,
@@ -213,7 +214,10 @@ class FallbackGroqLLMService(GroqLLMService):
         # The openai SDK retries 429/5xx itself (2 retries, own backoff); this class decides.
         # Its default timeout is 10 minutes: live, a hung connection held a turn for 26 s
         # before failing. A short one moves to the fallback while the caller still waits.
-        self._client = self._client.with_options(max_retries=0, timeout=request_timeout_s)
+        # Reads get longer: a pause mid-stream happens after this class has handed the stream
+        # on, where it can no longer fall back, so it should only fail when truly stuck.
+        timeout = httpx.Timeout(request_timeout_s, read=max(request_timeout_s, 20.0))
+        self._client = self._client.with_options(max_retries=0, timeout=timeout)
         self._fallback_model = fallback_model
         self._max_rate_limit_wait_s = max_rate_limit_wait_s
         self._cooldown_s = cooldown_s

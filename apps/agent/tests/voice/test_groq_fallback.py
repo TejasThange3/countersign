@@ -176,4 +176,6 @@ def test_requests_time_out_quickly() -> None:
         fallback_model=None,
         request_timeout_s=8.0,
     )
-    assert service._client.timeout == 8.0
+    timeout = service._client.timeout
+    assert timeout.connect == 8.0
+    assert timeout.read == 20.0  # mid-stream pauses can no longer fall back, so allow more
