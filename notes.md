@@ -1051,8 +1051,6 @@ answers the same questions by chat instead of by phone: same brain, same hatch, 
   `curl localhost:7860/health` → `{"status":"ok"}`. Open `http://localhost:7860/client/` and
   click Connect to talk to the agent.
 
-Glossary additions: frame (Pipecat), VAD, smart-turn, barge-in, TTFT, TTFB, cooldown, hold
-filler, text mode.
 
 ---
 
