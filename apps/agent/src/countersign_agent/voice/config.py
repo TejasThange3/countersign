@@ -73,6 +73,14 @@ class AgentSettings(BaseSettings):
     whisper_model: str = "distil-medium.en"
     whisper_device: Literal["cuda", "cpu", "auto"] = "auto"
 
+    # Silero VAD thresholds. Speech counts when confidence AND loudness (0-1, from -110 to
+    # -10 LUFS) both clear them. Pipecat's defaults (0.7 / 0.6) missed a caller talking over
+    # the bot in a live test: browser echo cancellation turns the caller down during bot
+    # playback. The VAD logs its peak values to tune these from evidence.
+    vad_confidence: float = Field(default=0.7, ge=0, le=1)
+    vad_min_volume: float = Field(default=0.4, ge=0, le=1)
+    vad_start_secs: float = Field(default=0.2, gt=0)
+
     hold_timeout_s: float = Field(default=60.0, gt=0)
     hold_filler_interval_s: float = Field(default=6.0, gt=0)
     # Spoken filler is synthesized once and cached here (outside the repo, keyed by voice and

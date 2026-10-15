@@ -13,7 +13,6 @@ import asyncio
 import logging
 from typing import Any
 
-from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.frames.frames import OutputAudioRawFrame
 from pipecat.observers.user_bot_latency_observer import UserBotLatencyObserver
 from pipecat.pipeline.pipeline import Pipeline
@@ -30,6 +29,7 @@ from countersign_agent.contracts import GatewayFactory
 from countersign_agent.voice.config import AgentSettings
 from countersign_agent.voice.filler import SAMPLE_RATE, load_filler
 from countersign_agent.voice.session import CallCore, PipelineCallOutput
+from countersign_agent.voice.vad import make_vad
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +99,7 @@ async def run_audio_call(
             gateway,
             settings,
             output,
-            user_params=LLMUserAggregatorParams(vad_analyzer=SileroVADAnalyzer()),
+            user_params=LLMUserAggregatorParams(vad_analyzer=make_vad(settings)),
         )
         await _run_pipeline(call_id, transport, core, output, settings, stt)
     finally:
