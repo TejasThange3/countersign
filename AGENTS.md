@@ -151,5 +151,8 @@ Add one line every time an agent gets something wrong that a rule would have pre
   exit code; `scripts/codex_review.py` now exits 2 when Codex reports `review_completed=false`.
 - Never `await` a synchronous SDK network call (ArmorIQ approval polling, status, report) on
   the event loop. Wrap it in `asyncio.to_thread`, or the voice pipeline freezes.
+- Secrets the user adds inside a lane's worktree `.env` are lost when the worktree is removed.
+  Put keys in the MAIN `.env` (copied into new worktrees by `.worktreeinclude`), and before
+  removing a worktree, main copies any new keys from its `.env` back to the main `.env`.
 - When a console form preselects an action (for example Hold on untouched policy rows), set
   every row explicitly and re-open the saved item to check it stuck.
