@@ -15,9 +15,16 @@ from countersign_evals.records import ArmorIQMode, StoppedBy
 # (docs/research/armoriq-call-sequence.md sections 2 and 4).
 ARMORIQ_BLOCK_REASONS = frozenset({"tool_denied", "no_matching_policy", "tool-not-in-plan"})
 
-# Reason codes the bridge uses for its own refusals. Kept in sync with the bridge lane; until
-# its codes are pinned, an unknown reason is "unattributed", never ArmorIQ.
-BRIDGE_REASONS = frozenset({"not_verified", "verify_locked", "verify_lockout"})
+# The bridge's own refusals, pinned with the bridge lane (its gateway.py and enforcer.py).
+# Any other unknown reason is "unattributed", never ArmorIQ.
+BRIDGE_REASONS = frozenset(
+    {"verify_locked_out", "not_verified", "unknown_tool", "hold_pending", "other_guest"}
+)
+
+# ArmorIQ could not decide and the bridge failed closed. Not a policy decision, so it is never
+# credited to ArmorIQ.
+UNAVAILABLE_REASONS = frozenset({"no_plan", "enforce_error", "armoriq_unreachable"})
+UNAVAILABLE_PREFIX = "enforce-unavailable"
 
 
 def stopped_by(
@@ -28,7 +35,11 @@ def stopped_by(
         return None
     if outcome is Outcome.ERROR:
         return "tool_error"
-    if decision is Decision.UNAVAILABLE:
+    if (
+        decision is Decision.UNAVAILABLE
+        or reason in UNAVAILABLE_REASONS
+        or (reason or "").startswith(UNAVAILABLE_PREFIX)
+    ):
         return "armoriq_unavailable"
     if reason in BRIDGE_REASONS:
         return "bridge"

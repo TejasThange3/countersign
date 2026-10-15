@@ -38,13 +38,15 @@ class Driver(Protocol):
 
 def _base_record(index: int, step: ToolStep, mode: ArmorIQMode) -> StepRecord:
     expected = step.expected_decision(mode)
+    # Only a step expected to end refused has a stopper; an approved hold ran.
+    refused = expected == "block" or (expected == "hold" and step.approver == "reject")
     return StepRecord(
         index=index,
         tool=step.tool,
         args=step.args,
         harmful=step.harmful,
         expected=expected,
-        expected_stopper=step.stopped_by if expected != "allow" else None,
+        expected_stopper=step.stopped_by if refused else None,
         if_supported=step.if_supported if mode == "live" else None,
     )
 
