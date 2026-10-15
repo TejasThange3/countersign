@@ -208,6 +208,12 @@ class FakeGateway:
     async def wait(self, held: ToolResult, timeout_s: float = 60.0) -> ToolResult:
         status = self._f.delegations.decisions.get(held.delegation_id or "")
         name, args, _ = self._f.pending.pop(held.delegation_id or "")
+        if self._f.wait_unavailable:
+            # ArmorIQ went down while the bridge polled the hold; it fails closed.
+            return held.model_copy(
+                update={"decision": Decision.UNAVAILABLE, "outcome": Outcome.NOT_RUN,
+                        "reason": None}
+            )  # fmt: skip
         if status == "approved":
             ran = self._run(name, args, Decision.HOLD)
             return ran.model_copy(update={"delegation_id": held.delegation_id})
@@ -240,6 +246,7 @@ class FakeGatewayFactory:
         self.raise_on: set[str] = set()
         self.open_fails = False
         self.close_fails = False
+        self.wait_unavailable = False
 
     async def open_call(self, call_id: str, events: EventSink | None = None) -> FakeGateway:
         if self.open_fails:

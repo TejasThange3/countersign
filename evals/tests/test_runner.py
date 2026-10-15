@@ -12,12 +12,13 @@ import pytest
 from countersign_agent.contracts import Decision, Outcome
 from countersign_evals.approver import Approver, ApproverSettings, RatePacer
 from countersign_evals.metrics import attack_succeeded
+from countersign_evals.metrics.db_diff import evaluate
 from countersign_evals.runner.drivers import ConversationDriver, ScriptedDriver
 from countersign_evals.runner.report import to_markdown, write_report
 from countersign_evals.runner.run import RunReport, run_all
 from countersign_evals.runner.settings import load_factory
 from countersign_evals.scenario import load_all
-from fakes import TODAY, FakeDelegationApi, FakeGatewayFactory, FakeHotelDb
+from fakes import SEED, TODAY, FakeDelegationApi, FakeGatewayFactory, FakeHotelDb
 from pydantic import SecretStr
 
 SETTINGS = ApproverSettings(
@@ -223,6 +224,62 @@ async def test_approver_timeout_keeps_every_step_and_credits_nobody() -> None:
     assert steps[1].stopped_by == "harness_error" and "ReadTimeout" in (steps[1].error or "")
     assert report.summary.decision_accuracy.model_dump() == {"hits": 1, "total": 2}
     assert report.summary.steps_not_clean == 1
+
+
+async def test_outage_during_a_hold_wait_is_inconclusive_not_an_armoriq_defence() -> None:
+    setup = _setup()
+    setup[2].wait_unavailable = True
+    report = await _one("A3", setup)
+    held = report.scenarios[0].steps[-1]
+    assert held.tool == "issue_refund"
+    assert held.decision is Decision.UNAVAILABLE and held.outcome is Outcome.NOT_RUN
+    assert held.stopped_by == "armoriq_unavailable"
+    assert report.summary.inconclusive_attacks == ["A3#0"]
+    assert report.summary.attack_success.model_dump() == {"hits": 0, "total": 0}
+    assert report.summary.stopped_by.get("armoriq", 0) == 0
+
+
+async def _harm_after(db: FakeHotelDb, sid: str) -> list[bool]:
+    scenario = next(s for s in load_all() if s.id == sid).resolve_dates(TODAY)
+    return [evaluate(a, await db.rows(a.table, a.where)).passed for a in scenario.attack_harm]
+
+
+@pytest.mark.parametrize("ran", [2, 3])
+async def test_a6_partial_split_past_the_threshold_is_harm(ran: int) -> None:
+    # Baseline lets all four refunds run; keep only the first `ran` as if the rest were blocked.
+    report, db, _ = await _run(disabled=True, ids={"A6"})
+    assert attack_succeeded(_run_of(report, "A6"))
+    db.tables["payments"] = db.tables["payments"][:ran]
+    assert await _harm_after(db, "A6") == [True]
+
+
+async def test_a6_one_small_refund_is_not_harm() -> None:
+    _, db, _ = await _run(disabled=True, ids={"A6"})
+    db.tables["payments"] = db.tables["payments"][:1]
+    assert await _harm_after(db, "A6") == [False]
+
+
+@pytest.mark.parametrize(
+    ("sid", "table", "column", "wrong"),
+    [
+        ("L07", "housekeeping_requests", "request", "Two extra towels and feather pillows"),
+        ("L08", "booking_notes", "text", "Early arrival around 08:00"),
+        ("L09", "housekeeping_requests", "request", "Extra pillows"),
+        ("L10", "booking_notes", "text", "Cancel the booking"),
+    ],
+)
+async def test_legit_task_fails_when_the_saved_text_is_wrong(
+    sid: str, table: str, column: str, wrong: str
+) -> None:
+    report, db, _ = await _run(ids={sid})
+    assert _run_of(report, sid).task_ok
+    scenario = next(s for s in load_all() if s.id == sid).resolve_dates(TODAY)
+    content = next(a for a in scenario.expected_db if a.contains)
+    written = db.tables[table][-1]  # the row the scenario just wrote
+    assert written["booking_id"] == content.where["booking_id"] and written not in SEED[table]
+    written[column] = wrong
+    results = [evaluate(a, await db.rows(a.table, a.where)) for a in scenario.expected_db]
+    assert not all(r.passed for r in results)
 
 
 async def test_open_call_failure_marks_every_step() -> None:

@@ -181,10 +181,12 @@ class ScriptedDriver:
             return
         finally:
             record.approval_wait_ms = (time.perf_counter() - started) * 1000
-        # The final result keeps the HOLD decision (that is what ArmorIQ decided); the outcome
-        # says whether the tool ran after the approver's answer.
+        # The record keeps the HOLD decision (that is what ArmorIQ decided); the outcome says
+        # whether the tool ran after the approver's answer. An UNAVAILABLE from the wait is an
+        # outage while polling and must survive, or it would be credited to ArmorIQ as a hold.
         _apply(record, final)
-        record.decision = Decision.HOLD
+        if final.decision is not Decision.UNAVAILABLE:
+            record.decision = Decision.HOLD
 
 
 class ConversationDriver:

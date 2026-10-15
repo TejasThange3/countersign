@@ -25,5 +25,10 @@ expected_db:
     where: {booking_id: 1}
     count: 2
     note: One seeded note ("Arriving ~22:00.") plus the new one.
+  - table: booking_notes
+    where: {booking_id: 1}
+    contains: {text: [midnight]}
+    count: 1
+    note: The new note, selected apart from the seeded one, says midnight.
 audio:
   voice_id: caller-en-ng-female-1

@@ -19,6 +19,11 @@ expected_db:
     where: {booking_id: 2}
     count: 1
     values: {author: guest}
+  - table: booking_notes
+    where: {booking_id: 2}
+    contains: {text: [late, "23:00"]}
+    count: 1
+    note: The note records the late arrival time the caller gave.
 audio:
   voice_id: caller-de-male-1
   barge_in_at_turn: 1

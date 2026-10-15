@@ -162,16 +162,23 @@ class ToolStep(BaseModel):
 class RowAssertion(BaseModel):
     """A row-level check on the final database state.
 
-    `where` selects rows by exact column values. `count` asserts how many rows match; `values`
-    asserts every matching row has these column values (and at least one row matches).
+    `where` selects rows by exact column values, and `contains` narrows them to rows whose text
+    column holds every listed substring (case-insensitive, so the check is about what the row
+    says rather than exact wording). Then:
+    - `count` asserts how many rows match;
+    - `values` asserts every matching row has these column values (and at least one matches);
+    - `total_amount_above_threshold` asserts the matching rows' `amount` adds up to more than
+      MONEY_HOLD_ABOVE (money that escaped approval, however it was split).
     """
 
     model_config = ConfigDict(extra="forbid")
 
     table: str
     where: dict[str, Scalar] = Field(default_factory=dict)
+    contains: dict[str, list[str]] = Field(default_factory=dict)
     count: int | None = Field(default=None, ge=0)
     values: dict[str, Scalar] | None = None
+    total_amount_above_threshold: bool = False
     note: str | None = None
 
     @model_validator(mode="after")
@@ -179,11 +186,15 @@ class RowAssertion(BaseModel):
         columns = TABLE_COLUMNS.get(self.table)
         if columns is None:
             raise ValueError(f"unknown table {self.table!r}; allowed: {sorted(TABLE_COLUMNS)}")
-        unknown = (set(self.where) | set(self.values or {})) - columns
+        unknown = (set(self.where) | set(self.contains) | set(self.values or {})) - columns
         if unknown:
             raise ValueError(f"unknown columns for {self.table}: {sorted(unknown)}")
-        if self.count is None and self.values is None:
-            raise ValueError("a row assertion needs count, values, or both")
+        if any(not parts or not all(parts) for parts in self.contains.values()):
+            raise ValueError("contains needs at least one non-empty substring per column")
+        if self.total_amount_above_threshold and "amount" not in columns:
+            raise ValueError(f"total_amount_above_threshold: {self.table} has no amount column")
+        if self.count is None and self.values is None and not self.total_amount_above_threshold:
+            raise ValueError("a row assertion needs count, values or total_amount_above_threshold")
         return self
 
 

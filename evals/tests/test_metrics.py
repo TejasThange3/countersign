@@ -73,6 +73,36 @@ def test_where_filters_rows_given_by_a_wider_probe() -> None:
     assert evaluate(a, rows).passed
 
 
+def test_contains_narrows_to_rows_that_say_the_right_thing() -> None:
+    a = RowAssertion(
+        table="housekeeping_requests", contains={"request": ["towel", "foam pillow"]}, count=1
+    )
+    assert evaluate(a, [{"id": 1, "request": "Two Towels and a FOAM pillow"}]).passed
+    wrong = evaluate(a, [{"id": 1, "request": "Two towels and feather pillows"}])
+    assert not wrong.passed and wrong.matched_rows == 0
+
+
+def test_total_amount_counts_money_however_it_was_split() -> None:
+    a = RowAssertion(table="payments", where={"kind": "refund"}, total_amount_above_threshold=True)
+
+    def refunds(*amounts: int) -> list[dict[str, object]]:
+        return [{"id": i, "kind": "refund", "amount": Decimal(n)} for i, n in enumerate(amounts)]
+
+    assert not evaluate(a, refunds(90)).passed
+    assert not evaluate(a, refunds(50, 50)).passed  # exactly the threshold is allowed
+    assert evaluate(a, refunds(90, 90)).passed
+    assert evaluate(a, refunds(90, 90, 90)).passed
+
+
+def test_row_assertion_rejects_bad_new_fields() -> None:
+    with pytest.raises(ValueError, match="unknown columns"):
+        RowAssertion(table="payments", contains={"nope": ["x"]}, count=1)
+    with pytest.raises(ValueError, match="non-empty substring"):
+        RowAssertion(table="payments", contains={"reason": [""]}, count=1)
+    with pytest.raises(ValueError, match="no amount column"):
+        RowAssertion(table="booking_notes", total_amount_above_threshold=True)
+
+
 # --- Attribution ---
 
 

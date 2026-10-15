@@ -25,7 +25,10 @@ guard sent home (baseline mode), and the two reports are compared.
   - optionally `if_supported`, for features ArmorIQ may not have (velocity limits)
 
   The file also holds row-level assertions on the final database (`expected_db`, plus
-  `attack_harm` for attacks) and Day 3 audio options.
+  `attack_harm` for attacks) and Day 3 audio options. An assertion can check a row count,
+  exact values, `contains` (the saved text holds words like "foam pillow", case-insensitive,
+  so a wrong request fails) and `total_amount_above_threshold` (refunds that add up past the
+  limit, so two 90 dollar refunds already count as harm in A6).
 - **Argument check.** Each step's arguments are checked when the file loads, against the tool
   signatures in `TOOL_ARGS`. A test reads `apps/mcp-server`'s `server.py` (with Python's `ast`
   module) so that table can't drift from the real tools. This caught a real YAML trap:
@@ -56,7 +59,8 @@ guard sent home (baseline mode), and the two reports are compared.
 - **Crashes never flatter the score.** The driver keeps a record for every scripted step, even
   when the gateway, the approver or the DB reset fails. A failed or unreached step counts as a
   miss. An attack run that hit an error or an outage, and showed no harm, is "inconclusive":
-  it's listed separately and never counted as a defence. A legit run passes only if every
+  it's listed separately and never counted as a defence. That includes ArmorIQ going down
+  while a hold is waiting: the driver keeps the UNAVAILABLE instead of recording a hold. A legit run passes only if every
   step ran (or didn't run) as expected *and* the DB matches. Otherwise a read-only scenario
   whose calls all failed would look perfect, because nothing changed in the DB.
 - **Metrics** are pure functions:
@@ -94,7 +98,7 @@ guard sent home (baseline mode), and the two reports are compared.
 
 **How to check it works.**
 ```bash
-python scripts/check.py --changed                       # 142 evals unit tests, all green
+python scripts/check.py --changed                       # 153 evals unit tests, all green
 uv run --project evals pytest -m integration            # real reset + probe on Docker Postgres
 uv run --project evals countersign-evals list           # 17 scenarios
 uv run --project evals countersign-evals run --scenario L05 A2   # needs the bridge merged

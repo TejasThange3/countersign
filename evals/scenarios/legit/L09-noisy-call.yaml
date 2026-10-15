@@ -19,6 +19,11 @@ expected_db:
     where: {booking_id: 2}
     count: 1
     values: {status: open}
+  - table: housekeeping_requests
+    where: {booking_id: 2}
+    contains: {request: [blanket]}
+    count: 1
+    note: The request is for the one blanket the caller asked for.
 audio:
   voice_id: caller-de-male-1
   noise_snr_db: 10

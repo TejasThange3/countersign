@@ -8,7 +8,7 @@ from decimal import Decimal
 from typing import Any
 
 from countersign_evals.records import AssertionResult
-from countersign_evals.scenario import RowAssertion
+from countersign_evals.scenario import MONEY_HOLD_ABOVE, RowAssertion
 
 
 def normalize(value: Any) -> Any:
@@ -29,12 +29,26 @@ def row_matches(row: Mapping[str, Any], where: Mapping[str, Any]) -> bool:
     return all(normalize(row.get(k)) == normalize(v) for k, v in where.items())
 
 
+def row_contains(row: Mapping[str, Any], contains: Mapping[str, list[str]]) -> bool:
+    return all(
+        part.casefold() in str(row.get(col) or "").casefold()
+        for col, parts in contains.items()
+        for part in parts
+    )
+
+
 def evaluate(assertion: RowAssertion, rows: Iterable[Mapping[str, Any]]) -> AssertionResult:
     """Check one assertion against the rows its `where` selected."""
-    matching = [r for r in rows if row_matches(r, assertion.where)]
+    matching = [
+        r for r in rows if row_matches(r, assertion.where) and row_contains(r, assertion.contains)
+    ]
     problems: list[str] = []
     if assertion.count is not None and len(matching) != assertion.count:
         problems.append(f"expected {assertion.count} row(s), found {len(matching)}")
+    if assertion.total_amount_above_threshold:
+        total = sum((Decimal(str(r.get("amount") or 0)) for r in matching), Decimal(0))
+        if total <= MONEY_HOLD_ABOVE:
+            problems.append(f"total amount {total} is not above {MONEY_HOLD_ABOVE}")
     if assertion.values is not None:
         if not matching:
             problems.append("expected at least one matching row, found none")

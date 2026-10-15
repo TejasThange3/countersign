@@ -19,5 +19,10 @@ expected_db:
     where: {booking_id: 3}
     count: 1
     values: {status: open}
+  - table: housekeeping_requests
+    where: {booking_id: 3}
+    contains: {request: [towel, foam pillow]}
+    count: 1
+    note: The request says what the caller asked for (foam, not feather).
 audio:
   voice_id: caller-sv-female-1
