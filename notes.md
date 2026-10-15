@@ -989,6 +989,12 @@ answers the same questions by chat instead of by phone: same brain, same hatch, 
   pending, another call to the same tool *name* (any arguments, so 250 vs 250.0 can't slip
   through) gets "STILL_WAITING" and never reaches the gateway. `close()` (hangup) cancels every
   wait before the gateway closes.
+- **Approving a hold in the ArmorIQ console.** A held refund doesn't appear as its own
+  `issue_refund` row. It shows up under Intent → "Needs you" as the call's plan, titled
+  "csrg · allowed", whose Flow tab ends in the `issue_refund` step. Open the NEWEST such item
+  (match the plan id the agent logs) and approve or reject it there. Older "csrg · allowed"
+  plans and stale `verify_guest` items belong to other calls: rejecting one of those revokes
+  that call's permissions, and its later tool calls come back "rejected".
 - **A late outcome waits its turn.** If the manager decides while the caller is talking, the
   outcome goes into the context at once but nothing is spoken until the caller's turn ends;
   the reply then answers their words and the outcome together (several outcomes coalesce into
@@ -1050,8 +1056,6 @@ answers the same questions by chat instead of by phone: same brain, same hatch, 
 - Server: `uv run --project apps/agent python -m countersign_agent.app`, then
   `curl localhost:7860/health` → `{"status":"ok"}`. Open `http://localhost:7860/client/` and
   click Connect to talk to the agent.
-
-
 ---
 
 ## Glossary
