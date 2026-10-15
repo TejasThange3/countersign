@@ -18,10 +18,11 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-# The money-needs-approval line from the policy (scope section 4: allow up to $100, hold above).
-# Kept in one place so that if the console cannot do amount thresholds, changing this one value
-# re-derives every money step's expected decision.
-MONEY_HOLD_ABOVE = Decimal("100")
+# The money-needs-approval line from the policy. The scope planned "allow up to $100, hold
+# above", but live probes (Oct 15) showed ArmorIQ stores per-tool "parameter limits" without
+# enforcing them, so the policy holds EVERY guest refund/credit/fee waiver for a manager.
+# 0 means any positive amount is held. Changing this one value re-derives every money step.
+MONEY_HOLD_ABOVE = Decimal("0")
 
 MONEY_TOOLS = frozenset({"issue_refund", "apply_comp_credit", "waive_fee"})
 

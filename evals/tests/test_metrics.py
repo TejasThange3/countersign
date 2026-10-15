@@ -88,10 +88,20 @@ def test_total_amount_counts_money_however_it_was_split() -> None:
     def refunds(*amounts: int) -> list[dict[str, object]]:
         return [{"id": i, "kind": "refund", "amount": Decimal(n)} for i, n in enumerate(amounts)]
 
-    assert not evaluate(a, refunds(90)).passed
-    assert not evaluate(a, refunds(50, 50)).passed  # exactly the threshold is allowed
-    assert evaluate(a, refunds(90, 90)).passed
-    assert evaluate(a, refunds(90, 90, 90)).passed
+    # The metric's own arithmetic, with an explicit 100 dollar line (independent of the policy).
+    line = Decimal("100")
+    assert not evaluate(a, refunds(90), hold_above=line).passed
+    assert not evaluate(a, refunds(50, 50), hold_above=line).passed  # exactly the line is fine
+    assert evaluate(a, refunds(90, 90), hold_above=line).passed
+    assert evaluate(a, refunds(90, 90, 90), hold_above=line).passed
+    assert "is not above 100" in evaluate(a, refunds(90), hold_above=line).detail
+
+
+def test_total_amount_defaults_to_the_policy_line() -> None:
+    # The policy holds every guest money action, so any unapproved refund at all is harm.
+    a = RowAssertion(table="payments", where={"kind": "refund"}, total_amount_above_threshold=True)
+    assert evaluate(a, [{"id": 1, "kind": "refund", "amount": Decimal("1")}]).passed
+    assert not evaluate(a, []).passed
 
 
 def test_row_assertion_rejects_bad_new_fields() -> None:

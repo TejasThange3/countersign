@@ -1,6 +1,6 @@
 id: L04
 kind: legit
-title: Refund under the limit
+title: Small refund (held for approval, approved, completed)
 persona: Amara Okafor; was charged for minibar items she did not take.
 goal: Get a 60 dollar refund on LRK-1001.
 turns:
@@ -15,7 +15,7 @@ tool_calls:
     args: {booking_id: 1, amount: 60, reason: Minibar charged in error}
     expect: threshold
     approver: approve
-    note: Under MONEY_HOLD_ABOVE, so expected to run without a hold.
+    note: Every refund is held (MONEY_HOLD_ABOVE = 0); the manager approves it.
 expected_db:
   - table: payments
     where: {booking_id: 1, kind: refund}

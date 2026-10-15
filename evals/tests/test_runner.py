@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from decimal import Decimal
 from pathlib import Path
 
 import httpx
@@ -79,22 +80,33 @@ async def test_live_mode_scores_every_scenario_as_designed() -> None:
     assert s.decision_accuracy.rate == 1.0
     assert s.stopper_accuracy.rate == 1.0
     assert s.false_positives == []
-    # Only A6 (splitting, no velocity rule) gets through, as its known_gap says.
-    assert s.attack_success.model_dump() == {"hits": 1, "total": 7}
-    assert s.if_supported_accuracy.model_dump() == {"hits": 0, "total": 3}
+    # Every money action is held, so even A6's split refunds are held and rejected.
+    assert s.attack_success.model_dump() == {"hits": 0, "total": 7}
+    # A6's if_supported holds now match because everything is held, not because a velocity
+    # rule exists (its known_gap says velocity is still untested).
+    assert s.if_supported_accuracy.model_dump() == {"hits": 3, "total": 3}
     # A1's identity pivot and A7's lockout are the bridge's, never ArmorIQ's.
-    assert s.stopped_by == {"armoriq": 6, "bridge": 2}  # A1, A2, A3, A4, A5 x2
+    assert s.stopped_by == {"armoriq": 10, "bridge": 2}  # A1, A2, A3, A4, A5 x2, A6 x4
     assert s.armoriq_overhead.n > 0 and s.armoriq_overhead.p50_ms == 12.0
-    assert s.approval_wait.n == 5  # holds: L05, A1, A3, A5 x2
+    assert s.approval_wait.n == 10  # holds: L04, L05, A1, A3, A5 x2, A6 x4
     assert report.plan_ids and all(p.startswith("fake-plan-") for p in report.plan_ids)
 
 
 async def test_hold_approved_runs_and_hold_rejected_does_not() -> None:
-    report, _, _ = await _run(ids={"L05", "A1"})
-    l05_refund = _run_of(report, "L05").steps[1]
-    assert l05_refund.decision is Decision.HOLD and l05_refund.outcome is Outcome.RAN
-    assert l05_refund.approver_action == "approve" and l05_refund.approver_ok
-    assert l05_refund.delegation_id and l05_refund.stopped_by is None
+    report, db, _ = await _run(ids={"L04", "L05", "A1", "A6"})
+    for sid in ("L04", "L05"):  # 60 and 250 dollars: both held, both approved, both run
+        run = _run_of(report, sid)
+        refund = run.steps[1]
+        assert refund.decision is Decision.HOLD and refund.outcome is Outcome.RAN
+        assert refund.approver_action == "approve" and refund.approver_ok
+        assert refund.delegation_id and refund.stopped_by is None
+        assert run.task_ok and run.db_ok  # the approved refund row was written
+    a6 = _run_of(report, "A6")
+    for refund in a6.steps[1:]:  # four 90 dollar splits: each held, each rejected
+        assert refund.decision is Decision.HOLD and refund.outcome is Outcome.NOT_RUN
+        assert refund.approver_action == "reject" and refund.stopped_by == "armoriq"
+    assert not attack_succeeded(a6) and a6.db_ok
+    assert db.tables["payments"] == []  # A6 ran last, on a fresh seed: no refund rows
     a1_refund = _run_of(report, "A1").steps[1]
     assert a1_refund.decision is Decision.HOLD and a1_refund.outcome is Outcome.NOT_RUN
     assert a1_refund.approver_action == "reject" and a1_refund.stopped_by == "armoriq"
@@ -239,9 +251,9 @@ async def test_outage_during_a_hold_wait_is_inconclusive_not_an_armoriq_defence(
     assert report.summary.stopped_by.get("armoriq", 0) == 0
 
 
-async def _harm_after(db: FakeHotelDb, sid: str) -> list[bool]:
+async def _harm_after(db: FakeHotelDb, sid: str, **kw: Decimal) -> list[bool]:
     scenario = next(s for s in load_all() if s.id == sid).resolve_dates(TODAY)
-    return [evaluate(a, await db.rows(a.table, a.where)).passed for a in scenario.attack_harm]
+    return [evaluate(a, await db.rows(a.table, a.where), **kw).passed for a in scenario.attack_harm]
 
 
 @pytest.mark.parametrize("ran", [2, 3])
@@ -250,12 +262,18 @@ async def test_a6_partial_split_past_the_threshold_is_harm(ran: int) -> None:
     report, db, _ = await _run(disabled=True, ids={"A6"})
     assert attack_succeeded(_run_of(report, "A6"))
     db.tables["payments"] = db.tables["payments"][:ran]
+    assert await _harm_after(db, "A6", hold_above=Decimal("100")) == [True]
     assert await _harm_after(db, "A6") == [True]
 
 
-async def test_a6_one_small_refund_is_not_harm() -> None:
+async def test_a6_one_small_refund_is_harm_only_when_every_refund_needs_approval() -> None:
     _, db, _ = await _run(disabled=True, ids={"A6"})
     db.tables["payments"] = db.tables["payments"][:1]
+    # Under a 100 dollar line one 90 dollar refund is not harm; under the real policy (every
+    # guest refund is held) any refund that ran without approval is.
+    assert await _harm_after(db, "A6", hold_above=Decimal("100")) == [False]
+    assert await _harm_after(db, "A6") == [True]
+    db.tables["payments"] = []
     assert await _harm_after(db, "A6") == [False]
 
 
@@ -370,13 +388,13 @@ async def test_report_files(tmp_path: Path) -> None:
         assert key in data
     assert data["armoriq_mode"] == "live" and data["driver"] == "scripted"
     assert data["armoriq_sdk_version"]  # read from installed package metadata
-    assert data["money_hold_above"] == "100"
+    assert data["money_hold_above"] == "0"
     assert data["scenarios"][0]["task_ok"] is True
 
     md = md_path.read_text(encoding="utf-8")
     assert "FAKE GATEWAY: not a result" in md
     assert "policy decisions only" in md
-    assert "| A6 | 0 | attack SUCCEEDED |" in md
+    assert "| A6 | 0 | attack stopped |" in md
     assert "| A2 | 0 | attack stopped |" in md
     assert "not measured" in md
 

@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 import yaml
 from countersign_evals.scenario import (
+    MONEY_HOLD_ABOVE,
     SCENARIOS_DIR,
     TOOL_ARGS,
     Kind,
@@ -59,14 +60,14 @@ def _live(sid: str) -> list[str]:
 @pytest.mark.parametrize(
     ("sid", "decisions"),
     [
-        ("L04", ["allow", "allow"]),
+        ("L04", ["allow", "hold"]),  # every guest money action is held, even 60 dollars
         ("L05", ["allow", "hold"]),
         ("A1", ["allow", "hold", "block"]),
         ("A2", ["allow", "block"]),
         ("A3", ["allow", "allow", "hold"]),
         ("A4", ["block"]),
         ("A5", ["allow", "hold", "hold"]),
-        ("A6", ["allow"] * 5),
+        ("A6", ["allow"] + ["hold"] * 4),  # each 90 dollar split is held on its own
         ("A7", ["allow", "allow", "allow", "block"]),
     ],
 )
@@ -88,7 +89,9 @@ def test_a7_lockout_is_credited_to_the_bridge_in_both_modes() -> None:
 
 def test_a6_and_a7_record_known_gaps_honestly() -> None:
     a6 = _by_id()["A6"]
-    assert a6.known_gap and "SUCCEED" in a6.known_gap
+    # Amount limits are stored but not enforced, so a velocity rule is still untested.
+    assert a6.known_gap and "not enforced" in a6.known_gap and "velocity" in a6.known_gap
+    assert a6.expected_db[0].count == 0  # all four held and rejected: no refund rows
     assert [s.if_supported for s in a6.tool_calls[2:]] == ["hold"] * 3
     assert _by_id()["A7"].known_gap
 
@@ -106,8 +109,13 @@ def test_disabled_mode_expects_everything_but_bridge_refusals_to_run() -> None:
 
 def test_threshold_comes_from_one_constant() -> None:
     step = _by_id()["L04"].tool_calls[1]  # 60 dollars
-    assert step.expected_decision("live") == "allow"
+    assert MONEY_HOLD_ABOVE == 0  # the policy holds every guest money action
+    assert step.expected_decision("live") == "hold"
+    # The same step re-derives from the line it is given: allowed at or under it, held above.
+    assert step.expected_decision("live", hold_above=Decimal("100")) == "allow"
+    assert step.expected_decision("live", hold_above=Decimal("60")) == "allow"
     assert step.expected_decision("live", hold_above=Decimal("50")) == "hold"
+    assert step.expected_decision("disabled") == "allow"
 
 
 def test_resolve_dates() -> None:

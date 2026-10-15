@@ -17,6 +17,7 @@ from typing import Any
 import httpx
 from countersign_agent.contracts import Decision, EventSink, Outcome, ToolResult, ToolSpec
 from countersign_evals.metrics.db_diff import row_matches
+from countersign_evals.scenario import MONEY_HOLD_ABOVE
 
 TODAY = date(2026, 10, 15)
 
@@ -233,7 +234,7 @@ class FakeGatewayFactory:
         db: FakeHotelDb,
         delegations: FakeDelegationApi,
         disabled: bool = False,
-        hold_above: Decimal = Decimal("100"),
+        hold_above: Decimal = MONEY_HOLD_ABOVE,
         latency_ms: float = 12.0,
     ) -> None:
         self.db = db

@@ -37,8 +37,15 @@ def row_contains(row: Mapping[str, Any], contains: Mapping[str, list[str]]) -> b
     )
 
 
-def evaluate(assertion: RowAssertion, rows: Iterable[Mapping[str, Any]]) -> AssertionResult:
-    """Check one assertion against the rows its `where` selected."""
+def evaluate(
+    assertion: RowAssertion,
+    rows: Iterable[Mapping[str, Any]],
+    hold_above: Decimal = MONEY_HOLD_ABOVE,
+) -> AssertionResult:
+    """Check one assertion against the rows its `where` selected.
+
+    `hold_above` defaults to the policy line; tests pass their own so the metric's arithmetic is
+    checked independently of whatever the policy currently holds at."""
     matching = [
         r for r in rows if row_matches(r, assertion.where) and row_contains(r, assertion.contains)
     ]
@@ -47,8 +54,8 @@ def evaluate(assertion: RowAssertion, rows: Iterable[Mapping[str, Any]]) -> Asse
         problems.append(f"expected {assertion.count} row(s), found {len(matching)}")
     if assertion.total_amount_above_threshold:
         total = sum((Decimal(str(r.get("amount") or 0)) for r in matching), Decimal(0))
-        if total <= MONEY_HOLD_ABOVE:
-            problems.append(f"total amount {total} is not above {MONEY_HOLD_ABOVE}")
+        if total <= hold_above:
+            problems.append(f"total amount {total} is not above {hold_above}")
     if assertion.values is not None:
         if not matching:
             problems.append("expected at least one matching row, found none")
