@@ -59,10 +59,11 @@ class PipelineCallOutput:
     async def play_filler(self) -> None:
         return None
 
-    async def deliver_hold_outcome(self, tool: str, result: ToolResult) -> None:
-        await self._queue(
-            LLMMessagesAppendFrame(messages=[hold_outcome_message(tool, result)], run_llm=True)
-        )
+    async def deliver_hold_outcome(
+        self, tool: str, result: ToolResult, *, interrupted: bool = False
+    ) -> None:
+        message = hold_outcome_message(tool, result, interrupted=interrupted)
+        await self._queue(LLMMessagesAppendFrame(messages=[message], run_llm=True))
 
     async def _queue(self, frame: TTSSpeakFrame | LLMMessagesAppendFrame) -> None:
         if self.worker is None:

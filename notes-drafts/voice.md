@@ -38,6 +38,11 @@ answers the same questions by chat instead of by phone: same brain, same hatch, 
   pending, another call to the same tool *name* (any arguments, so 250 vs 250.0 can't slip
   through) gets "STILL_WAITING" and never reaches the gateway. `close()` (hangup) cancels every
   wait before the gateway closes.
+- **Talking over the bot never loses an action.** Pipecat cancels a tool handler on barge-in.
+  For acting tools (anything not a read) the gateway call runs in a router-owned task behind
+  `asyncio.shield`, so it finishes anyway; its outcome is added to the context afterwards with
+  "already processed, do not call again", and a repeat call while it runs is a DUPLICATE. Only
+  hangup cancels it. Reads are simply cancelled, since they change nothing.
 - **Filler costs no TTS credits per hold.** `voice/filler.py` synthesizes "Still checking with
   the manager" once, caches the raw PCM in `~/.cache/countersign/` (keyed by voice and model) and
   replays it. Without a key it plays a generated two-note tone.

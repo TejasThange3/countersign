@@ -84,3 +84,27 @@ async def test_small_refund_is_allowed_without_hold(approve_session: TextSession
     reply = await approve_session.send("Please refund 40 dollars")
     assert HOLD_ANNOUNCEMENT not in reply.messages
     assert [r.outcome for r in reply.tool_results] == [Outcome.RAN]
+
+
+async def test_open_closes_the_gateway_when_the_llm_cannot_be_built() -> None:
+    factory = FakeGatewayFactory()
+
+    def broken(_settings: object) -> FakeScriptedLLM:
+        raise RuntimeError("no API key")
+
+    with pytest.raises(RuntimeError):
+        await TextSession.open("broken-llm", factory, make_settings(), llm_factory=broken)
+    assert factory.opened[0].closed
+
+
+async def test_open_closes_the_gateway_when_startup_fails(
+    monkeypatch: pytest.MonkeyPatch, llm: FakeScriptedLLM
+) -> None:
+    async def failing_start(_self: TextSession) -> None:
+        raise TimeoutError("pipeline never started")
+
+    monkeypatch.setattr(TextSession, "_start", failing_start)
+    factory = FakeGatewayFactory()
+    with pytest.raises(TimeoutError):
+        await open_session(factory, llm)
+    assert factory.opened[0].closed

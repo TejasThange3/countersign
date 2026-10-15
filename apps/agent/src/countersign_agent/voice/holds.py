@@ -14,6 +14,11 @@ While a hold is pending, another call to the same tool (any arguments) is answer
 "still waiting" and never reaches the gateway. The key is the tool name rather than the
 exact arguments, because the LLM may phrase the same request differently (250 vs 250.0).
 Hanging up cancels every pending wait, so a held tool never runs after the call ends.
+
+A caller talking over the bot (barge-in) does not cancel an acting tool call. Pipecat cancels
+the handler, but the gateway call keeps running in a router-owned task and its outcome is
+added to the context afterwards, so a refund that already committed is never lost and asked
+for again. Only hanging up (`close()`) cancels it.
 """
 
 from __future__ import annotations
@@ -72,12 +77,21 @@ class CallOutput(Protocol):
         """Play one short piece of pre-made hold filler. Must not spend TTS credits."""
         ...
 
-    async def deliver_hold_outcome(self, tool: str, result: ToolResult) -> None:
-        """Add a held call's final outcome to the context and let the LLM speak it."""
+    async def deliver_hold_outcome(
+        self, tool: str, result: ToolResult, *, interrupted: bool = False
+    ) -> None:
+        """Add a call's late outcome to the context and let the LLM speak it: a held call
+        that was decided, or (`interrupted`) a call whose handler a barge-in cancelled."""
         ...
 
 
 ResultListener = Callable[[ToolResult], Awaitable[None]]
+
+
+class _Delivery:
+    """Whether the function call's handler is still there to take the result."""
+
+    abandoned = False
 
 
 class ToolRouter:
@@ -102,6 +116,8 @@ class ToolRouter:
         self._pending: dict[str, asyncio.Task[None]] = {}
         # Tool names whose gateway.call is running right now.
         self._in_flight: set[str] = set()
+        # Tool name -> the task running an acting tool's call (it outlives a barge-in).
+        self._acting: dict[str, asyncio.Task[None]] = {}
         self._side_effect_tools = {s.name for s in gateway.tool_specs() if s.tier != "read"}
         self._wait_grace_s = wait_grace_s
         self._closed = False
@@ -111,7 +127,7 @@ class ToolRouter:
         return list(self._pending)
 
     def has_pending_holds(self) -> bool:
-        return bool(self._pending)
+        return bool(self._pending or self._acting)
 
     async def handle(self, params: FunctionCallParams) -> None:
         name = params.function_name
@@ -128,6 +144,24 @@ class ToolRouter:
             return
 
         self._in_flight.add(name)
+        if name not in self._side_effect_tools:
+            # Reads change nothing, so a barge-in may simply cancel them.
+            await self._run(name, params, _Delivery())
+            return
+
+        delivery = _Delivery()
+        task = asyncio.create_task(self._run(name, params, delivery), name=f"call:{name}")
+        self._acting[name] = task
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            if not task.done():
+                # Barge-in (or hangup, which `close()` handles by cancelling the task).
+                delivery.abandoned = True
+                logger.info("handler for %s cancelled; the call finishes in the background", name)
+            raise
+
+    async def _run(self, name: str, params: FunctionCallParams, delivery: _Delivery) -> None:
         try:
             try:
                 result = await self._gateway.call(name, dict(params.arguments))
@@ -135,43 +169,57 @@ class ToolRouter:
                 # Fail closed, and still settle the function call so the LLM isn't left
                 # waiting on a result that never comes.
                 logger.exception("gateway.call failed for %s; treating as not done", name)
-                await params.result_callback(GATEWAY_ERROR_RESULT)
+                if not delivery.abandoned:
+                    await params.result_callback(GATEWAY_ERROR_RESULT)
                 return
             await self._notify(result)
 
             if result.outcome is not Outcome.PENDING:
-                await params.result_callback(result.content)
+                if not delivery.abandoned:
+                    await params.result_callback(result.content)
+                elif not self._closed:
+                    await self._output.deliver_hold_outcome(name, result, interrupted=True)
                 return
 
             if self._closed:
                 # The call ended while the gateway was deciding; nobody is left to wait for.
-                await params.result_callback(PENDING_RESULT)
+                if not delivery.abandoned:
+                    await params.result_callback(PENDING_RESULT)
                 return
 
             task = asyncio.create_task(self._wait(name, result), name=f"hold:{name}")
             self._pending[name] = task
         finally:
             self._in_flight.discard(name)
+            self._acting.pop(name, None)
         await self._output.say(HOLD_ANNOUNCEMENT)
-        await params.result_callback(
-            PENDING_RESULT, properties=FunctionCallResultProperties(run_llm=False)
-        )
+        if not delivery.abandoned:
+            await params.result_callback(
+                PENDING_RESULT, properties=FunctionCallResultProperties(run_llm=False)
+            )
 
     async def wait_for_holds(self) -> None:
         """Block until no hold is pending (used by text mode to return a whole turn)."""
-        while self._pending:
-            await asyncio.gather(*self._pending.values(), return_exceptions=True)
+        while self._pending or self._acting:
+            tasks = [*self._pending.values(), *self._acting.values()]
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def close(self) -> None:
         """The caller hung up: cancel every pending wait so no held tool runs afterwards."""
         self._closed = True
-        tasks = list(self._pending.values())
+        tasks = [*self._acting.values(), *self._pending.values()]
         for task in tasks:
             task.cancel()
         for task in tasks:
             with contextlib.suppress(asyncio.CancelledError):
                 await task
+        # An acting call cancelled mid-flight may have started a hold before it stopped.
+        for task in list(self._pending.values()):
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
         self._pending.clear()
+        self._acting.clear()
 
     async def _wait(self, name: str, held: ToolResult) -> None:
         filler = asyncio.create_task(self._filler_loop(), name=f"hold-filler:{name}")
@@ -220,8 +268,20 @@ def _refused(held: ToolResult, reason: str) -> ToolResult:
     )
 
 
-def hold_outcome_message(tool: str, result: ToolResult) -> dict[str, str]:
-    """The context message that tells the LLM how a held call ended."""
+def hold_outcome_message(
+    tool: str, result: ToolResult, *, interrupted: bool = False
+) -> dict[str, str]:
+    """The context message that tells the LLM how a held (or interrupted) call ended."""
+    if interrupted:
+        return {
+            "role": "developer",
+            "content": (
+                f"The earlier {tool} call was still running when the caller spoke, and it has "
+                f"now finished with outcome {result.outcome.value}. Tool result: "
+                f"{json.dumps(result.content)}. It has already been processed, so do not "
+                f"call {tool} again for it. Tell the caller the outcome briefly."
+            ),
+        }
     if result.outcome is Outcome.RAN:
         status = "APPROVED and completed"
     elif result.outcome is Outcome.ERROR:

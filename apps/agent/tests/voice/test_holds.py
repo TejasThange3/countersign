@@ -29,8 +29,10 @@ class RecordingOutput:
     async def play_filler(self) -> None:
         self.log.append("filler")
 
-    async def deliver_hold_outcome(self, tool: str, result: ToolResult) -> None:
-        self.log.append(f"outcome:{tool}:{result.outcome}")
+    async def deliver_hold_outcome(
+        self, tool: str, result: ToolResult, *, interrupted: bool = False
+    ) -> None:
+        self.log.append(f"{'late' if interrupted else 'outcome'}:{tool}:{result.outcome}")
         self.outcomes.append(result)
 
 
@@ -220,3 +222,82 @@ async def test_hung_wait_is_a_refusal() -> None:
 
     assert output.outcomes[0].outcome is Outcome.NOT_RUN
     assert output.outcomes[0].reason == "hold_wait_overrun"
+
+
+class CommitThenSlow(FakeGateway):
+    """The action commits at once (it is recorded in `calls`), then the reply is slow."""
+
+    async def call(self, name: str, arguments: dict[str, Any]) -> ToolResult:
+        result = await super().call(name, arguments)
+        await asyncio.sleep(0.1)
+        return result
+
+
+REFUND_40 = {"booking_id": 1001, "amount": 40.0, "reason": "noise"}
+
+
+async def start_then_interrupt(router: ToolRouter, params: FakeParams) -> None:
+    """Pipecat cancels the handler task when the caller talks over the bot."""
+    handler = asyncio.create_task(router.handle(params))  # type: ignore[arg-type]
+    await asyncio.sleep(0.02)
+    handler.cancel()
+    await asyncio.gather(handler, return_exceptions=True)
+
+
+async def test_barge_in_after_commit_keeps_the_outcome_and_never_runs_twice() -> None:
+    gateway = CommitThenSlow("c1")
+    output = RecordingOutput()
+    router = make_router(gateway, output)
+    first = FakeParams("issue_refund", REFUND_40, output.log)
+
+    await start_then_interrupt(router, first)
+    assert len(gateway.calls) == 1  # the refund committed before the interruption
+
+    # The LLM, having seen the call cancelled, asks for the same refund again.
+    again = FakeParams("issue_refund", REFUND_40, [])
+    await router.handle(again)  # type: ignore[arg-type]
+    assert "DUPLICATE" in again.results[0][0]
+
+    await router.wait_for_holds()
+    assert len(gateway.calls) == 1
+    assert first.results == []  # the cancelled handler is not answered...
+    assert output.log[-1] == "late:issue_refund:ran"  # ...the outcome reaches the context
+    assert router.has_pending_holds() is False
+
+
+async def test_barge_in_on_a_held_call_still_starts_the_hold() -> None:
+    gateway = CommitThenSlow("c1", approval_delay_s=0.05)
+    output = RecordingOutput()
+    router = make_router(gateway, output)
+
+    await start_then_interrupt(router, FakeParams("issue_refund", REFUND_250, output.log))
+    await router.wait_for_holds()
+
+    assert output.log[0] == f"say:{HOLD_ANNOUNCEMENT}"
+    assert output.log[-1] == "outcome:issue_refund:ran"
+    assert len(gateway.calls) == 1
+
+
+async def test_hangup_cancels_an_acting_call_in_flight() -> None:
+    gateway = CommitThenSlow("c1")
+    output = RecordingOutput()
+    router = make_router(gateway, output)
+
+    await start_then_interrupt(router, FakeParams("issue_refund", REFUND_40, output.log))
+    await router.close()
+    await asyncio.sleep(0.15)
+
+    assert output.outcomes == []  # nothing is delivered after hangup
+    assert router.has_pending_holds() is False
+
+
+async def test_barge_in_cancels_a_read() -> None:
+    gateway = CommitThenSlow("c1")
+    output = RecordingOutput()
+    router = make_router(gateway, output)
+
+    await start_then_interrupt(router, FakeParams("check_availability", {"check_in": "x"}, []))
+    await asyncio.sleep(0.15)
+
+    assert output.log == []
+    assert router.has_pending_holds() is False

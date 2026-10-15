@@ -133,9 +133,11 @@ class _TextCallOutput(PipelineCallOutput):
         self.tracker.filler_played += 1
         self.tracker.changed.set()
 
-    async def deliver_hold_outcome(self, tool: str, result: ToolResult) -> None:
+    async def deliver_hold_outcome(
+        self, tool: str, result: ToolResult, *, interrupted: bool = False
+    ) -> None:
         self.tracker.awaiting_response = True
-        await super().deliver_hold_outcome(tool, result)
+        await super().deliver_hold_outcome(tool, result, interrupted=interrupted)
 
 
 class TextSession:
@@ -171,10 +173,23 @@ class TextSession:
         llm_factory: LLMFactory = gemini_llm,
     ) -> TextSession:
         gateway = await factory.open_call(call_id)
-        output = _TextCallOutput()
-        core = CallCore(call_id, gateway, settings, output, llm_factory=llm_factory)
-        session = cls(core, output, settings)
-        await session._start()
+        try:
+            output = _TextCallOutput()
+            core = CallCore(call_id, gateway, settings, output, llm_factory=llm_factory)
+        except BaseException:
+            await gateway.close()
+            raise
+        try:
+            session = cls(core, output, settings)
+        except BaseException:
+            await core.close()
+            raise
+        try:
+            await session._start()
+        except BaseException:
+            # The session was never registered, so nothing else would close it.
+            await session.close()
+            raise
         return session
 
     async def _start(self) -> None:
