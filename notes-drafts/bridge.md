@@ -47,8 +47,9 @@ phone call and sends every tool call through `gateway.call(name, args)`.
   model. The bridge strips `guest_id` from the schemas the model sees, so the model can't
   even propose one.
 - **Masking** (`masking.py`). Every event and log line is masked before it leaves the bridge:
-  secrets and personal fields (`email`, `last_name`, `phone`) are blanked, and any stray
-  email address becomes `<email>`.
+  secrets and personal fields (`email`, `last_name`, `phone`, `guest_name`) are blanked, even
+  inside tool results that travel as JSON text, and any stray email address becomes `<email>`.
+  The model still sees the real tool result; only published copies are masked.
 - **Factory** (`factory.py`). Builds the ArmorIQ client lazily, in a worker thread. If the
   client can't be built (bad key, no network), the call gets an `UnavailableEnforcer` that
   refuses every tool with `armoriq_unreachable`. The next call tries again.
@@ -57,6 +58,14 @@ phone call and sends every tool call through `gateway.call(name, args)`.
 - **Plan steps are pinned to `ARMORIQ_MCP_NAME`** (`armoriq_setup.py`). The SDK would
   otherwise look tools up in a flat tool -> server map, which can pick a leftover test server
   that shares tool names.
+- **The policy** (`docs/research/armoriq-policy-countersign.md`). It is set by hand in the
+  ArmorIQ console on `hotel-mcp-2` and has one override per identity. The unverified caller
+  can only read. The verified guest can read and write, every money call **holds** for a
+  manager, and the sensitive tools are blocked. The planned "allow up to $100" rule turned out
+  not to be possible: the console's parameter limits are stored but not enforced, so a $250
+  refund was allowed. The money limit isn't rebuilt in our code, because ArmorIQ must make
+  that decision. Two more console lessons: an override *replaces* the base rows, and
+  "Default" inside an override means Block.
 - **Reason codes are a contract** read by the evals lane: `verify_locked_out`, `not_verified`,
   `unknown_tool`, `hold_pending`, `other_guest`, `no_plan`, `enforce_error`,
   `armoriq_disabled`, `armoriq_unreachable` (plus `enforce_unavailable`,
@@ -71,13 +80,17 @@ is the live proof). The policy is written down in
 `docs/research/armoriq-policy-countersign.md`.
 
 **How to check it works.**
-- Unit tests: `uv run --project apps/agent pytest -q tests/bridge`. They should all pass, and
-  the live test is skipped.
+- Unit tests: `uv run --project apps/agent pytest -q apps/agent/tests/bridge`. They should all
+  pass, and the live test is skipped.
 - By hand: start hotel-mcp, then run
   `uv run --project apps/agent python -m countersign_agent.cli_text`. Try `specs`, then
   `call issue_refund {"amount": 40}`: it is blocked while you are unverified. Then
-  `verify LRK-1001 Okafor`, `call issue_refund {"amount": 40}` (allow) and
-  `call issue_refund {"amount": 250}` (hold), followed by `wait` (it waits for the last held call).
+  `verify LRK-1001 Okafor`, then `call issue_refund {"booking_id": 1, "amount": 40}`. It
+  holds; approve it in the ArmorIQ console, then type `wait`, which waits for the last held
+  call and runs it once approved.
 - Live proof (real ArmorIQ, needs hotel-mcp and the tunnel up):
-  `uv run --project apps/agent pytest -m live tests/bridge/test_live_bridge.py -s`. It writes
-  masked evidence to `apps/agent/tests/bridge/evidence/`.
+  `uv run --project apps/agent pytest -m live apps/agent/tests/bridge/test_live_bridge.py -s`.
+  You should see `1 passed`. The steps are: unverified refund BLOCK, verify ALLOW, $40 HOLD ->
+  approved -> payment row written, $250 HOLD -> rejected -> no row, export BLOCK. It writes
+  masked evidence to `apps/agent/tests/bridge/evidence/` (first passing run:
+  `20261015T110948Z-live-bridge.json`).

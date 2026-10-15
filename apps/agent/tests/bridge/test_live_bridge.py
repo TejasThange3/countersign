@@ -3,9 +3,10 @@
     uv run --project apps/agent pytest -m live tests/bridge/test_live_bridge.py -s
 
 Needs: hotel-mcp running at MCP_URL (seeded), the `countersign` policy configured in the
-console (unverified: read only; guest: read + write, money hold above $100, sensitive block),
-and ARMORIQ_ADMIN_EMAIL in .env (the approver for the held refund). Saves masked evidence JSON
-with the plan ids under tests/bridge/evidence/.
+console (docs/research/armoriq-policy-countersign.md: unverified read only; guest read +
+write, money always hold, sensitive block), and ARMORIQ_ADMIN_EMAIL in .env (approves the $40
+hold, rejects the $250 one). Saves masked evidence JSON with the plan ids under
+tests/bridge/evidence/.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ import json
 from datetime import UTC, datetime
 from importlib.metadata import version
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 import pytest
@@ -62,34 +63,48 @@ async def test_live_bridge_decisions() -> None:
         bookings = json.loads(verify.content)["bookings"]
         booking_id = next(b["booking_id"] for b in bookings if b["ref"] == BOOKING_REF)
 
-        # 2. Verified $40 refund: allowed and written.
+        # 2. Verified $40 refund: money always holds (ArmorIQ has no working amount limit),
+        # approved over the API by the admin, then written.
         small = await gw.call(
             "issue_refund", {"booking_id": booking_id, "amount": 40, "reason": "live proof: $40"}
         )
-        small_row = json.loads(small.content) if small.outcome is Outcome.RAN else None
-        record("verified $40 refund", "ALLOW", small, row=small_row)
-        assert small.decision is Decision.ALLOW and small.outcome is Outcome.RAN, small
-        assert small_row is not None and await _payment_exists(gw, booking_id, small_row)
-
-        # 3. Verified $250 refund: held, approved over the API by the admin, then written.
-        held = await gw.call(
-            "issue_refund", {"booking_id": booking_id, "amount": 250, "reason": "live proof: $250"}
-        )
-        record("verified $250 refund (held)", "HOLD", held)
-        assert held.decision is Decision.HOLD and held.outcome is Outcome.PENDING, held
-        assert held.delegation_id
-        approval = await _approve(settings, held.delegation_id)
-        approved = await gw.wait(held, timeout_s=90)
-        big_row = json.loads(approved.content) if approved.outcome is Outcome.RAN else None
+        record("verified $40 refund (held)", "HOLD", small)
+        assert small.decision is Decision.HOLD and small.outcome is Outcome.PENDING, small
+        assert small.delegation_id
+        approval = await _decide(settings, small.delegation_id, "approve")
+        approved = await gw.wait(small, timeout_s=90)
+        small_row = json.loads(approved.content) if approved.outcome is Outcome.RAN else None
         record(
-            "verified $250 refund (after approval)",
+            "verified $40 refund (after approval)",
             "RAN",
             approved,
             approver_status=approval,
-            row=big_row,
+            row=small_row,
         )
         assert approved.outcome is Outcome.RAN, approved
-        assert big_row is not None and await _payment_exists(gw, booking_id, big_row)
+        assert small_row is not None and small_row["amount"] == 40
+        assert small_row["payment_id"] in await _payment_ids(gw, booking_id)
+
+        # 3. Verified $250 refund: held, rejected by the admin, so nothing is written.
+        before = await _payment_ids(gw, booking_id)
+        big = await gw.call(
+            "issue_refund", {"booking_id": booking_id, "amount": 250, "reason": "live proof: $250"}
+        )
+        record("verified $250 refund (held)", "HOLD", big)
+        assert big.decision is Decision.HOLD and big.outcome is Outcome.PENDING, big
+        assert big.delegation_id
+        rejection = await _decide(settings, big.delegation_id, "reject")
+        rejected = await gw.wait(big, timeout_s=90)
+        after = await _payment_ids(gw, booking_id)
+        record(
+            "verified $250 refund (after rejection)",
+            "NOT_RUN",
+            rejected,
+            approver_status=rejection,
+            new_payments=sorted(after - before),
+        )
+        assert rejected.outcome is Outcome.NOT_RUN and rejected.reason == "rejected", rejected
+        assert after == before, "a rejected refund must not write a row"
 
         # 4. Sensitive export: blocked even for a verified guest.
         export = await gw.call("export_guest_list", {})
@@ -101,15 +116,16 @@ async def test_live_bridge_decisions() -> None:
         _save_evidence(factory, cases, events)
 
 
-async def _payment_exists(gw: GovernedGateway, booking_id: int, row: dict[str, Any]) -> bool:
-    """Read the booking back through the governed path: the refund row must be there."""
+async def _payment_ids(gw: GovernedGateway, booking_id: int) -> set[int]:
+    """Read the booking back through the governed path (a guest read, allowed)."""
     booking = await gw.call("get_booking", {"booking_id": booking_id})
     assert booking.outcome is Outcome.RAN, booking
-    payments = json.loads(booking.content)["payments"]
-    return any(p["payment_id"] == row["payment_id"] for p in payments)
+    return {p["payment_id"] for p in json.loads(booking.content)["payments"]}
 
 
-async def _approve(settings: BridgeSettings, delegation_id: str) -> int:
+async def _decide(
+    settings: BridgeSettings, delegation_id: str, decision: Literal["approve", "reject"]
+) -> int:
     headers = {"X-API-Key": settings.require_api_key()}
     async with httpx.AsyncClient() as http:
         role = await fetch_approver_role(http, BACKEND, headers, settings.armoriq_admin_email)
@@ -119,10 +135,10 @@ async def _approve(settings: BridgeSettings, delegation_id: str) -> int:
             delegation_id,
             headers,
             settings.armoriq_admin_email,
-            "approve",
+            decision,
             role,
         )
-    assert result.ok, f"approve failed: HTTP {result.status_code}"
+    assert result.ok, f"{decision} failed: HTTP {result.status_code}"
     return result.status_code
 
 

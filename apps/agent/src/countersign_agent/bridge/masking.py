@@ -4,6 +4,7 @@ guest's email in it. Adapted from spikes/armoriq output.py."""
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from collections.abc import Mapping
@@ -15,7 +16,7 @@ from countersign_agent.bridge.redact import mask_identities, redact
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 EMAIL_PLACEHOLDER = "<email>"
 # Personal fields a tool argument or result can carry; masked by key, whatever the value.
-PERSONAL_KEYS = frozenset({"email", "last_name", "phone"})
+PERSONAL_KEYS = frozenset({"email", "last_name", "phone", "guest_name"})
 MASKED = "<masked>"
 
 
@@ -27,6 +28,13 @@ def _mask_personal(value: Any) -> Any:
         }
     if isinstance(value, list):
         return [_mask_personal(v) for v in value]
+    if isinstance(value, str) and value[:1] in ("{", "["):
+        # Tool results travel as JSON text (ToolResult.content); key masking must see inside.
+        try:
+            parsed = json.loads(value)
+        except ValueError:
+            return value
+        return json.dumps(_mask_personal(parsed))
     return value
 
 

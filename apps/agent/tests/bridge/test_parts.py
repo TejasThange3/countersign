@@ -134,6 +134,18 @@ def test_masker_masks_identities_secrets_personal_keys_and_stray_emails() -> Non
     assert masker.clean("plain text") == "plain text"  # empty secrets never match
 
 
+def test_masker_masks_personal_keys_inside_json_string_content() -> None:
+    # Tool results reach events as a JSON string (ToolResult.content), not a dict.
+    content = json.dumps({"guest_name": "Amara Okafor", "phone": "555", "room_number": "103"})
+    cleaned = Masker({}).clean({"content": content, "note": "{not json"})
+    assert json.loads(cleaned["content"]) == {
+        "guest_name": "<masked>",
+        "phone": "<masked>",
+        "room_number": "103",
+    }
+    assert cleaned["note"] == "{not json"
+
+
 @pytest.fixture
 def restore_root_logging() -> Iterator[None]:
     root = logging.getLogger()
