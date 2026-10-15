@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 import time
 from collections.abc import Callable
 from typing import Any, Literal, Protocol
@@ -21,6 +22,12 @@ from countersign_agent.bridge.approval import ApprovalBackend, ApprovalOutcome, 
 from countersign_agent.contracts import Decision
 
 logger = logging.getLogger("countersign_agent.bridge.enforcer")
+
+# The SDK mints a plan's token from `user_email_override`, one field on the shared client
+# that every `for_user(...).start_session()` overwrites (client.py:593-601, :1795-1823). Two
+# calls opening plans at once could mint a token for the other caller's identity, so
+# "open session + start plan" runs as one step under this process-wide lock.
+PLAN_LOCK = threading.Lock()
 
 # The SDK turns any enforce exception into a block with this reason (session.py:860-864).
 SDK_UNAVAILABLE_PREFIX = "enforce-unavailable"
@@ -120,8 +127,10 @@ class ArmorIQEnforcer:
         approvals: ApprovalBackend,
         tool_names: list[str],
         poll_seconds: float,
+        plan_lock: threading.Lock = PLAN_LOCK,
     ) -> None:
         self._session_factory = session_factory
+        self._plan_lock = plan_lock
         self._approvals = approvals
         self._tool_names = tool_names
         self._poll_seconds = poll_seconds
@@ -135,22 +144,32 @@ class ArmorIQEnforcer:
             await self._close_session(old)
         self._user_email = user_email
         started = time.perf_counter()
-        session: GovernedSession | None = None
         try:
-            session = await asyncio.to_thread(self._session_factory, user_email)
-            # Every tool, declared once with no arguments: the plan names what the agent may
-            # try this call; the per-call arguments are judged by check().
-            token = await asyncio.to_thread(
-                session.start_plan, [{"name": n, "args": {}} for n in self._tool_names], goal
-            )
+            session, token = await asyncio.to_thread(self._open_plan, user_email, goal)
         except Exception:
             logger.exception("ArmorIQ session/plan failed; every check will fail closed")
-            if session is not None:
-                await self._close_session(session)  # stop its observability thread
             return _ms_since(started)
         self._session = session
         self.plan_id = getattr(token, "plan_id", None)
         return _ms_since(started)
+
+    def _open_plan(self, user_email: str, goal: str) -> tuple[GovernedSession, Any]:
+        """Blocking; runs in a worker thread."""
+        with self._plan_lock:
+            session = self._session_factory(user_email)
+            try:
+                # Every tool, declared once with no arguments: the plan names what the agent
+                # may try this call; the per-call arguments are judged by check().
+                token = session.start_plan(
+                    [{"name": n, "args": {}} for n in self._tool_names], goal
+                )
+            except Exception:
+                try:
+                    session.close()  # stop its observability thread
+                except Exception:
+                    logger.warning("ArmorIQ session close failed", exc_info=True)
+                raise
+        return session, token
 
     async def check(self, tool: str, arguments: dict[str, Any]) -> Verdict:
         if self._session is None:
@@ -166,8 +185,34 @@ class ArmorIQEnforcer:
                 latency_ms=_ms_since(started),
             )
         verdict = to_verdict(result, _ms_since(started))
+        if verdict.decision is Decision.ALLOW and result.delegation_id:
+            verdict = await self._consume_reused_approval(tool, result.delegation_id, verdict)
         if verdict.decision is Decision.UNAVAILABLE:
             logger.warning("ArmorIQ unavailable for %s: %s", tool, result.reason)
+        return verdict
+
+    async def _consume_reused_approval(
+        self, tool: str, delegation_id: str, verdict: Verdict
+    ) -> Verdict:
+        """An allow carrying a delegation id is the SDK reusing an earlier approval for this
+        plan (session.py:1218-1251). The SDK marks it executed itself but ignores a refusal, so
+        it is marked again through the checked backend (same Idempotency-Key, so this reads
+        the backend's real answer) and the tool runs only if that succeeds."""
+        try:
+            await asyncio.to_thread(
+                self._approvals.mark_delegation_executed,
+                self._user_email or "",
+                delegation_id,
+                self.plan_id,
+            )
+        except Exception:
+            logger.exception("reused approval for %s could not be consumed (fail closed)", tool)
+            return Verdict(
+                decision=Decision.UNAVAILABLE,
+                reason="approval_error",
+                policy=verdict.policy,
+                latency_ms=verdict.latency_ms,
+            )
         return verdict
 
     async def wait(

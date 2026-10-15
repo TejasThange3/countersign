@@ -162,6 +162,7 @@ class FakeApprovals:
         self.statuses = statuses or ["pending"]
         self.polls = 0
         self.marked: list[tuple[str, str, str | None]] = []
+        self.mark_error: Exception | None = None
 
     def get_delegation_status(self, delegation_id: str) -> str:
         item = self.statuses[min(self.polls, len(self.statuses) - 1)]
@@ -173,6 +174,8 @@ class FakeApprovals:
     def mark_delegation_executed(
         self, user_email: str, delegation_id: str, plan_id: str | None = None
     ) -> None:
+        if self.mark_error is not None:
+            raise self.mark_error
         self.marked.append((user_email, delegation_id, plan_id))
 
 

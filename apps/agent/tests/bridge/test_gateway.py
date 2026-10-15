@@ -13,7 +13,7 @@ from armoriq_sdk.session import EnforceResult
 from countersign_agent.bridge.enforcer import DisabledEnforcer, UnavailableEnforcer
 from countersign_agent.bridge.executor import ToolOutput
 from countersign_agent.bridge.gateway import GovernedGateway
-from countersign_agent.contracts import Decision, Outcome
+from countersign_agent.contracts import Decision, GatewayEvent, Outcome
 
 from .fakes import (
     GUEST,
@@ -395,6 +395,32 @@ async def test_concurrent_waits_on_one_hold_run_the_tool_once() -> None:
     assert sum(1 for c in h.mcp.calls if c[0] == "issue_refund") == 1
 
 
+def reuse_approval(tool: str, args: dict[str, object]) -> EnforceResult:
+    """The SDK's check() returns this when it finds an approved delegation for this plan; it
+    has already tried to mark it executed and ignored any refusal."""
+    if tool == "issue_refund":
+        return EnforceResult(allowed=True, action="allow", delegation_id="d-7")
+    return EnforceResult(allowed=True, action="allow")
+
+
+async def test_reused_approval_is_consumed_through_checked_approvals() -> None:
+    h = Harness(decide=reuse_approval)
+    gw = await verified(h)
+    result = await gw.call("issue_refund", BIG_REFUND)
+    assert result.outcome is Outcome.RAN
+    assert h.approvals.marked == [(GUEST, "d-7", "plan-2")]
+
+
+async def test_reused_approval_that_cannot_be_consumed_fails_closed() -> None:
+    h = Harness(decide=reuse_approval)
+    gw = await verified(h)
+    h.approvals.mark_error = DelegationException("fake 403", delegation_id="d-7", status_code=403)
+    result = await gw.call("issue_refund", BIG_REFUND)
+    assert result.decision is Decision.UNAVAILABLE
+    assert result.reason == "approval_error"
+    assert all(c[0] != "issue_refund" for c in h.mcp.calls)
+
+
 async def test_approval_error_fails_closed() -> None:
     forbidden = DelegationException("fake 403", delegation_id="d-1", status_code=403)
     h = Harness(approvals=FakeApprovals([forbidden]))
@@ -526,3 +552,32 @@ async def test_close_closes_mcp_and_session() -> None:
     gw = await h.open()
     await gw.close()
     assert h.mcp.closed and h.sessions[-1].closed
+
+
+async def test_verify_during_a_slow_hold_publication_still_sees_the_hold() -> None:
+    """The hold is registered under the identity lock, before tool_decided is published."""
+
+    def hold_everything_but_verify(tool: str, args: dict[str, object]) -> EnforceResult:
+        if tool == "verify_guest":
+            return EnforceResult(allowed=True, action="allow")
+        return EnforceResult(allowed=False, action="hold", delegation_id="d-9")
+
+    h = Harness(decide=hold_everything_but_verify)
+    gw = await h.open()
+    publishing, release = asyncio.Event(), asyncio.Event()
+
+    async def slow_sink(event: GatewayEvent) -> None:
+        h.events.append(event)
+        if event.kind == "tool_decided" and event.data.get("tool") == "get_hotel_info":
+            publishing.set()
+            await release.wait()
+
+    gw._events = slow_sink  # the dashboard is slow exactly while the hold is announced
+    held_task = asyncio.create_task(gw.call("get_hotel_info", {}))
+    await publishing.wait()
+    verify = await gw.call("verify_guest", VERIFY)
+    release.set()
+    held = await held_task
+    assert held.outcome is Outcome.PENDING
+    assert verify.reason == "hold_pending"
+    assert len(h.log.plans) == 1

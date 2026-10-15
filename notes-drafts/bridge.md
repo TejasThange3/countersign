@@ -40,7 +40,14 @@ phone call and sends every tool call through `gateway.call(name, args)`.
   `gateway.wait(hold_id)` polls ArmorIQ in a worker thread. When the hold is approved, it
   marks the approval as used (`CheckedApprovals`, which fails closed if ArmorIQ refuses), runs
   the tool, and reports it. While a hold is pending, an unverified caller can't run
-  `verify_guest` to switch identity under it.
+  `verify_guest` to switch identity under it. The hold is recorded inside the identity lock, so
+  a `verify_guest` that runs at the same moment still sees it. If ArmorIQ itself reuses an
+  earlier approval (`check()` answers allow with a delegation id), the bridge consumes that
+  approval through `CheckedApprovals` too: the SDK's own "mark used" ignores refusals.
+- **One plan at a time per process.** The SDK mints a plan's token from one field on the
+  shared client that every new session overwrites. If two phone calls started a plan at the
+  same moment, one could get a token for the other caller's identity, so "open session + start
+  plan" runs as a single step under a process-wide lock (`enforcer.PLAN_LOCK`).
 - **Tools** (`tools.py`, `executor.py`). `McpExecutor` talks to hotel-mcp over FastMCP's
   streamable HTTP client with the bearer token. Each MCP tool carries exactly one tier tag:
   read, write, money or sensitive. A tool without one is dropped and is never shown to the

@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import threading
+import time
 from collections.abc import Iterator
+from typing import ClassVar
 
 import pytest
 from armoriq_sdk.session import EnforceResult
-from countersign_agent.bridge.enforcer import DisabledEnforcer, UnavailableEnforcer, to_verdict
+from countersign_agent.bridge.enforcer import (
+    ArmorIQEnforcer,
+    DisabledEnforcer,
+    UnavailableEnforcer,
+    to_verdict,
+)
 from countersign_agent.bridge.factory import GovernedGatewayFactory
 from countersign_agent.bridge.identity import CallIdentity, Verify
 from countersign_agent.bridge.masking import Masker, install_masked_logging
@@ -16,7 +25,7 @@ from countersign_agent.bridge.settings import BridgeSettings
 from countersign_agent.bridge.tools import ToolInfo, convert_tools, strip_identity, tier_of
 from countersign_agent.contracts import Decision, Outcome
 
-from .fakes import FAKE_TOOL_INFOS, GUEST, UNVERIFIED, FakeMCP
+from .fakes import FAKE_TOOL_INFOS, GUEST, UNVERIFIED, FakeApprovals, FakeMCP
 
 # --- schema conversion ---
 
@@ -108,6 +117,42 @@ def test_verified_true_without_guest_id_is_a_failure() -> None:
 )
 def test_to_verdict(result: EnforceResult, decision: Decision) -> None:
     assert to_verdict(result, 1.0).decision is decision
+
+
+class FakeSharedClientSession:
+    """Mimics the SDK: for_user().start_session() writes the email onto the SHARED client,
+    and start_plan() mints the token from whatever is there at that moment."""
+
+    shared: ClassVar[dict[str, str]] = {}
+
+    def __init__(self, email: str, minted: list[tuple[str, str]]) -> None:
+        FakeSharedClientSession.shared["override"] = email
+        self.email = email
+        self.minted = minted
+
+    def start_plan(self, tool_calls: list[dict[str, object]], goal: str | None = None) -> None:
+        time.sleep(0.05)  # another call's start_session lands here without the lock
+        self.minted.append((self.email, FakeSharedClientSession.shared["override"]))
+
+    def close(self) -> None:
+        pass
+
+
+async def test_concurrent_calls_never_mint_a_plan_for_another_identity() -> None:
+    minted: list[tuple[str, str]] = []
+    lock = threading.Lock()
+
+    def enforcer() -> ArmorIQEnforcer:
+        return ArmorIQEnforcer(
+            session_factory=lambda email: FakeSharedClientSession(email, minted),  # type: ignore[arg-type,return-value]
+            approvals=FakeApprovals(),
+            tool_names=["get_hotel_info"],
+            poll_seconds=0.01,
+            plan_lock=lock,
+        )
+
+    await asyncio.gather(enforcer().start(UNVERIFIED, "a"), enforcer().start(GUEST, "b"))
+    assert sorted(minted) == sorted([(UNVERIFIED, UNVERIFIED), (GUEST, GUEST)])
 
 
 # --- masking ---

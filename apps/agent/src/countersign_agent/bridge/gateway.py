@@ -134,25 +134,31 @@ class GovernedGateway:
             await self._emit("tool_requested", {"tool": name, "arguments": args})
             verdict = await self._enforcer.check(name, args)
             plan_id = self._enforcer.plan_id
-        verdict.latency_ms += self._take_unbilled()
+            verdict.latency_ms += self._take_unbilled()
+            # Decided against the identity the check ran as, and a hold is registered before
+            # the lock is released, so a concurrent verify_guest sees it and won't re-plan.
+            unverified_guest_call = tool.needs_guest_id and not self._identity.verified
+            if (
+                verdict.decision is Decision.HOLD
+                and verdict.delegation_id
+                and not unverified_guest_call
+            ):
+                self._pending[verdict.delegation_id] = _Pending(
+                    tool=name,
+                    arguments=args,
+                    delegation_id=verdict.delegation_id,
+                    plan_id=plan_id,
+                    policy=verdict.policy,
+                    reason=verdict.reason,
+                    latency_ms=verdict.latency_ms,
+                )
         await self._emit_decided(name, verdict, plan_id)
 
-        if verdict.decision in (Decision.ALLOW, Decision.HOLD) and (
-            tool.needs_guest_id and not self._identity.verified
-        ):
+        if verdict.decision in (Decision.ALLOW, Decision.HOLD) and unverified_guest_call:
             # ArmorIQ was asked first (its block is the audit trail); the bridge still never
             # runs a guest-scoped tool without a verified guest.
             return await self._refuse(name, R_NOT_VERIFIED, SAY_NOT_VERIFIED, verdict, plan_id)
         if verdict.decision is Decision.HOLD and verdict.delegation_id:
-            self._pending[verdict.delegation_id] = _Pending(
-                tool=name,
-                arguments=args,
-                delegation_id=verdict.delegation_id,
-                plan_id=plan_id,
-                policy=verdict.policy,
-                reason=verdict.reason,
-                latency_ms=verdict.latency_ms,
-            )
             return self._result(
                 name, verdict, Outcome.PENDING, SAY_HELD, plan_id, verdict.delegation_id
             )
