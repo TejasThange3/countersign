@@ -45,3 +45,8 @@ frontend-design
 shadcn
 tailwind
 tailwindcss
+
+# Premium front end (dashboard / landing, Day 3)
+high-end-visual-design
+design-taste-frontend
+emil-design-eng
