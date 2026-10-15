@@ -63,8 +63,9 @@ phone call and sends every tool call through `gateway.call(name, args)`.
   even propose one.
 - **Masking** (`masking.py`). Every event and log line is masked before it leaves the bridge:
   secrets and personal fields (`email`, `first_name`, `last_name`, `phone`, `guest_name`) are
-  blanked, even inside tool results that travel as JSON text, and any stray email address
-  becomes `<email>`.
+  blanked, and credential-looking keys (`password`, `token`, `authorization`...) are redacted.
+  Both also happen inside tool results that travel as JSON text, and any stray email address
+  becomes `<email>`. JSON nested too deep to decode is withheld as `<masked>`.
   The model still sees the real tool result; only published copies are masked.
 - **Factory** (`gateway_factory.py`). Builds the ArmorIQ client lazily, in a worker thread.
   If the client can't be built (bad key, no network), the call gets an `UnavailableEnforcer`
@@ -73,9 +74,12 @@ phone call and sends every tool call through `gateway.call(name, args)`.
   verdict says `armoriq_disabled`). The voice app and the eval runner load it through
   `GATEWAY_FACTORY=countersign_agent.bridge:factory`, a zero-argument function that returns
   a `GovernedGatewayFactory` configured from `.env`.
-- **Hang-up** (`gateway.close()`). Every pending hold is invalidated, and any wait still
-  polling for a manager is cancelled before the MCP connection and the ArmorIQ session close,
-  so no approval is used up for a call that has ended.
+- **Hang-up** (`gateway.close()`, safe to call twice). Every pending hold is invalidated,
+  and any wait still polling for a manager is cancelled, so a call that has ended doesn't
+  spend an approval. A poll already inside a worker thread can't be stopped mid-request,
+  though. A tool that is already running (including an approved hold) finishes and is
+  reported before the MCP connection and the ArmorIQ session close, so a refund is never left
+  half-done. After that, every call is refused with `call_closed`.
 - **Plan steps are pinned to `ARMORIQ_MCP_NAME`** (`armoriq_setup.py`). The SDK would
   otherwise look tools up in a flat tool -> server map, which can pick a leftover test server
   that shares tool names.
@@ -91,7 +95,7 @@ phone call and sends every tool call through `gateway.call(name, args)`.
   `unknown_tool`, `hold_pending`, `other_guest`, `no_plan`, `enforce_error`,
   `armoriq_disabled`, `armoriq_unreachable` (plus `enforce_unavailable`,
   `hold_without_delegation`, `approval_error`, `approval_reused`, `unknown_hold`,
-  `wait_in_progress`, `approved`, `rejected`, `timeout`). Count refusals by `reason`, not by
+  `wait_in_progress`, `call_closed`, `approved`, `rejected`, `timeout`). Count refusals by `reason`, not by
   `decision`. In particular, `other_guest` comes back with `decision=allow, outcome=ran`,
   because `verify_guest` really did run. ArmorIQ allowed it, the MCP looked up the other
   guest, and the run was reported to ArmorIQ. What the bridge refuses is the identity switch:

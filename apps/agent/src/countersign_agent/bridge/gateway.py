@@ -55,6 +55,7 @@ R_NOT_VERIFIED = "not_verified"
 R_UNKNOWN_TOOL = "unknown_tool"
 R_HOLD_PENDING = "hold_pending"
 R_OTHER_GUEST = "other_guest"
+R_CLOSED = "call_closed"
 
 
 class _Pending(BaseModel):
@@ -129,12 +130,16 @@ class GovernedGateway:
             # Not offered, so not in the plan either: the SDK would block it locally.
             await self._emit("tool_requested", {"tool": name, "arguments": arguments})
             return await self._refuse(name, R_UNKNOWN_TOOL, SAY_BLOCKED)
+        if self._closed:
+            return await self._refuse(name, R_CLOSED, SAY_UNAVAILABLE)
         if name == VERIFY_TOOL:
             return await self._verify(arguments)
 
         # Check, run and report all happen under the identity the check ran as: a concurrent
         # verify_guest waits for in-flight tools, and sees any hold registered here.
         async with self._identity_lock:
+            if self._closed:  # hung up while this call waited for the lock
+                return await self._refuse(name, R_CLOSED, SAY_UNAVAILABLE)
             args = self._with_identity(tool, arguments)
             await self._emit("tool_requested", {"tool": name, "arguments": args})
             verdict = await self._enforcer.check(name, args)
@@ -181,6 +186,8 @@ class GovernedGateway:
     async def _verify(self, arguments: dict[str, Any]) -> ToolResult:
         name = VERIFY_TOOL
         async with self._identity_lock:
+            if self._closed:
+                return await self._refuse(name, R_CLOSED, SAY_UNAVAILABLE)
             if self._identity.locked_out:
                 # The one short-circuit before ArmorIQ: brute-force protection is ours.
                 await self._emit("tool_requested", {"tool": name, "arguments": arguments})
@@ -307,6 +314,11 @@ class GovernedGateway:
                 )
             )
         if approval == "approved":
+            # The approval is spent now: close() must not cancel the run half-way (a refund
+            # written but never reported), so this wait leaves the cancellable set.
+            current = asyncio.current_task()
+            if current is not None:
+                self._wait_tasks.discard(current)
             # The hold leaves _pending only once the lock is held, so no verify_guest can
             # re-plan between the approval and the run, and the run is reported through the
             # session that asked for it.
@@ -320,6 +332,19 @@ class GovernedGateway:
                 raise
             try:
                 self._pending.pop(pending.delegation_id, None)
+                if self._closed:
+                    await self._emit("hold_resolved", {**hold_data, "resolution": "cancelled"})
+                    verdict.decision, verdict.reason = Decision.BLOCK, R_CLOSED
+                    return await self._finish(
+                        self._result(
+                            pending.tool,
+                            verdict,
+                            Outcome.NOT_RUN,
+                            SAY_UNAVAILABLE,
+                            pending.plan_id,
+                            pending.delegation_id,
+                        )
+                    )
                 await self._emit("hold_resolved", {**hold_data, "resolution": approval})
                 verdict.reason = "approved"
                 return await self._run(
@@ -347,18 +372,27 @@ class GovernedGateway:
         )
 
     async def close(self) -> None:
-        """Hang-up: holds are invalidated and outstanding waits stop polling before the MCP
-        connection and the ArmorIQ session go, so no approval is consumed for a dead call."""
+        """Hang-up. Idempotent. Holds are invalidated and waits still polling for a manager
+        are cancelled (their callers get CancelledError), so a hung-up call doesn't spend an
+        approval. A poll or mark already inside a worker thread can't be stopped, though. A
+        tool that is already running, including an approved hold, finishes and is reported
+        before the MCP connection and the ArmorIQ session close."""
+        if self._closed:
+            return
         self._closed = True
         self._pending.clear()
-        others = [t for t in self._wait_tasks if t is not asyncio.current_task()]
-        for task in others:
-            task.cancel()
-        await asyncio.gather(*others, return_exceptions=True)
         try:
-            await self._executor.close()
+            others = [t for t in self._wait_tasks if t is not asyncio.current_task()]
+            for task in others:
+                task.cancel()
+            await asyncio.gather(*others, return_exceptions=True)
+            async with self._identity_lock:  # in-flight check/run/report finish first
+                pass
         finally:
-            await self._enforcer.close()
+            try:
+                await self._executor.close()
+            finally:
+                await self._enforcer.close()
 
     # --- helpers ---
 

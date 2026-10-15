@@ -683,3 +683,43 @@ async def test_close_stops_outstanding_waits_and_invalidates_holds() -> None:
     assert late.outcome is Outcome.NOT_RUN
     assert h.approvals.marked == []
     assert all(c[0] != "issue_refund" for c in h.mcp.calls)
+
+
+async def test_close_is_idempotent_and_refuses_calls_afterwards() -> None:
+    h = Harness()
+    gw = await h.open()
+    await gw.close()
+    await gw.close()
+    assert h.mcp.close_count == 1
+    checks = len(h.log.checks)
+    after = await gw.call("get_hotel_info", {})
+    verify = await gw.call("verify_guest", VERIFY)
+    assert (after.outcome, after.reason) == (Outcome.NOT_RUN, "call_closed")
+    assert (verify.outcome, verify.reason) == (Outcome.NOT_RUN, "call_closed")
+    assert len(h.log.checks) == checks  # no ArmorIQ check after hang-up
+    assert h.mcp.calls == []
+
+
+async def test_close_lets_a_running_tool_finish_before_disconnecting() -> None:
+    h = Harness()
+    gw = await h.open()
+    deciding, release = asyncio.Event(), asyncio.Event()
+
+    async def slow_sink(event: GatewayEvent) -> None:
+        h.events.append(event)
+        if event.kind == "tool_decided" and event.data.get("tool") == "get_hotel_info":
+            deciding.set()
+            await release.wait()
+
+    gw._events = slow_sink
+    running = asyncio.create_task(gw.call("get_hotel_info", {}))
+    await deciding.wait()  # allowed, about to run
+    closing = asyncio.create_task(gw.close())
+    await asyncio.sleep(0.05)
+    assert not h.mcp.closed  # the hang-up waits for the tool, not the other way round
+    release.set()
+    result = await running
+    await closing
+    assert result.outcome is Outcome.RAN
+    assert ("get_hotel_info", {}) in h.mcp.calls
+    assert h.mcp.closed

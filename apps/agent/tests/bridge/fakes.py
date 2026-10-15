@@ -192,6 +192,7 @@ class FakeMCP:
             **(answers or {}),
         }
         self.calls: list[tuple[str, dict[str, Any]]] = []
+        self.close_count = 0
         self.closed = False
 
     async def list_tools(self) -> list[ToolInfo]:
@@ -208,6 +209,7 @@ class FakeMCP:
 
     async def close(self) -> None:
         self.closed = True
+        self.close_count += 1
 
 
 class Harness:

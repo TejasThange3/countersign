@@ -206,6 +206,14 @@ def test_masker_redacts_credentials_inside_json_string_content() -> None:
     assert fake not in json.dumps(cleaned)
 
 
+def test_masker_handles_padded_and_pathologically_nested_json_text() -> None:
+    fake = "fake-not-a-secret"
+    padded = Masker({}).clean({"c": ' \n{"password": "%s"}' % fake})  # noqa: UP031  # literal braces
+    assert fake not in padded["c"]
+    deep = Masker({}).clean({"c": "[" * 5000 + "]" * 5000})  # guest-written text can look like this
+    assert deep["c"] == "<masked>"
+
+
 @pytest.fixture
 def restore_root_logging() -> Iterator[None]:
     root = logging.getLogger()

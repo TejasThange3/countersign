@@ -61,12 +61,18 @@ class Masker:
             return {k: self._clean_json_text(v) for k, v in value.items()}
         if isinstance(value, list):
             return [self._clean_json_text(v) for v in value]
-        if isinstance(value, str) and value[:1] in ("{", "["):
+        if isinstance(value, str) and value.lstrip()[:1] in ("{", "["):
             try:
                 parsed = json.loads(value)
             except ValueError:
                 return value
-            return json.dumps(self.clean(parsed))
+            except RecursionError:
+                # Nested too deep to decode, so it can't be checked: withhold it.
+                return MASKED
+            try:
+                return json.dumps(self.clean(parsed))
+            except RecursionError:
+                return MASKED
         return value
 
 
