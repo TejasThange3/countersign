@@ -47,7 +47,8 @@ class AgentSettings(BaseSettings):
     elevenlabs_tts_model: str = "eleven_flash_v2_5"
 
     stt_provider: Literal["whisper", "elevenlabs"] = "whisper"
-    whisper_model: str = "distil-large-v3"
+    # distil-medium.en (~400 MB) fits a memory-tight dev box; distil-large-v3 is more accurate.
+    whisper_model: str = "distil-medium.en"
     whisper_device: Literal["cuda", "cpu", "auto"] = "auto"
 
     hold_timeout_s: float = Field(default=60.0, gt=0)

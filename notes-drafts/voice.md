@@ -20,8 +20,9 @@ answers the same questions by chat instead of by phone: same brain, same hatch, 
   has finished their turn. *Barge-in* is the caller talking over the bot: VAD start triggers an
   interruption that drops queued audio and cancels the running reply. This is the receptionist's
   ears, brain and mouth.
-- **STT** is local **faster-whisper** (`distil-large-v3`) on the RTX 4060, so listening costs no
-  credits. Faster-whisper loaded CUDA with no extra DLL setup, because torch ships the CUDA
+- **STT** is local **faster-whisper** (`distil-medium.en`, about 400 MB, chosen because the dev
+  machine is short on RAM; set `WHISPER_MODEL=distil-large-v3` for better accuracy) on the RTX
+  4060, so listening costs no credits. Faster-whisper loaded CUDA with no extra DLL setup, because torch ships the CUDA
   libraries. `STT_PROVIDER=elevenlabs` switches to ElevenLabs Scribe. **TTS** is ElevenLabs
   `eleven_flash_v2_5`.
 - **Tools come only from the gateway.** `voice/tools.py` turns each `ToolSpec` from
