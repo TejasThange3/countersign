@@ -169,5 +169,10 @@ Add one line every time an agent gets something wrong that a rule would have pre
 - Secrets the user adds inside a lane's worktree `.env` are lost when the worktree is removed.
   Put keys in the MAIN `.env` (copied into new worktrees by `.worktreeinclude`), and before
   removing a worktree, main copies any new keys from its `.env` back to the main `.env`.
+- Running pytest over a folder that contains live tests runs them unless they are opt-in. Keep
+  live tests skipped without `-m live` (a conftest guard), or they spend real calls.
+- ArmorIQ console: a per-member override REPLACES the base rows, "Default" inside an override
+  means Block, and per-tool parameter limits (`amount <= 100`) are stored but NOT enforced.
+  Verify every policy save read-only with resolve-user, not by eye.
 - When a console form preselects an action (for example Hold on untouched policy rows), set
   every row explicitly and re-open the saved item to check it stuck.
