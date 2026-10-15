@@ -7,6 +7,7 @@ as a real phone call; only the transport and the STT/TTS services differ.
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import date
 
 from pipecat.frames.frames import LLMMessagesAppendFrame, TTSSpeakFrame
 from pipecat.pipeline.worker import PipelineWorker
@@ -24,7 +25,7 @@ from countersign_agent.voice.config import AgentSettings
 from countersign_agent.voice.holds import ToolRouter, hold_outcome_message
 from countersign_agent.voice.llm import FallbackGoogleLLMService, FallbackGroqLLMService
 from countersign_agent.voice.metrics import TurnMetricsRecorder
-from countersign_agent.voice.prompts import SYSTEM_PROMPT
+from countersign_agent.voice.prompts import system_prompt
 from countersign_agent.voice.tools import build_tools_schema
 
 LLMFactory = Callable[[AgentSettings], LLMService]
@@ -34,7 +35,7 @@ def gemini_llm(settings: AgentSettings) -> LLMService:
     return FallbackGoogleLLMService(
         api_key=settings.gemini_api_key,
         settings=GoogleLLMService.Settings(
-            model=settings.gemini_model, system_instruction=SYSTEM_PROMPT
+            model=settings.gemini_model, system_instruction=system_prompt(date.today())
         ),
         fallback_model=settings.gemini_fallback_model,
         rate_limit_retries=settings.gemini_rate_limit_retries,
@@ -52,12 +53,13 @@ def groq_llm(settings: AgentSettings) -> LLMService:
         api_key=settings.groq_api_key,
         settings=GroqLLMService.Settings(
             model=settings.llm_model,
-            system_instruction=SYSTEM_PROMPT,
+            system_instruction=system_prompt(date.today()),
             reasoning_effort=settings.llm_reasoning_effort,
         ),
         fallback_model=settings.llm_fallback_model,
         max_rate_limit_wait_s=settings.llm_rate_limit_max_wait_s,
         cooldown_s=settings.llm_model_cooldown_s,
+        request_timeout_s=settings.llm_request_timeout_s,
     )
 
 

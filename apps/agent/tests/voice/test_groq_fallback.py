@@ -166,3 +166,14 @@ def test_sdk_retries_are_off() -> None:
         api_key="fake-key", settings=GroqLLMService.Settings(model=PRIMARY), fallback_model=None
     )
     assert service._client.max_retries == 0
+
+
+def test_requests_time_out_quickly() -> None:
+    # The SDK default is 10 minutes; a hung connection held a live turn for 26 s.
+    service = FallbackGroqLLMService(
+        api_key="fake-key",
+        settings=GroqLLMService.Settings(model=PRIMARY),
+        fallback_model=None,
+        request_timeout_s=8.0,
+    )
+    assert service._client.timeout == 8.0

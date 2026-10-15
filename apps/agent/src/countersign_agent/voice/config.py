@@ -45,6 +45,9 @@ class AgentSettings(BaseSettings):
     # After a failure, skip that Groq model (unless it's the only option) for this long, or
     # for as long as its rate-limit reset header says.
     llm_model_cooldown_s: float = 60.0
+    # Per-request timeout for Groq (connect and between streamed bytes). A connection that
+    # hung for 26 s was seen live; past this, the request fails over to the fallback model.
+    llm_request_timeout_s: float = Field(default=8.0, gt=0)
 
     gemini_api_key: str = ""
     gemini_model: str = "gemini-3.8-flash"

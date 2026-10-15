@@ -90,12 +90,30 @@ FAKE_TOOL_SPECS: list[ToolSpec] = [
     ),
 ]
 
-_CANNED: dict[str, Any] = {
-    "verify_guest": {
+# The seed's demo identities (apps/mcp-server seed: guest n owns LRK-100n). Anything else is
+# "not verified", as hotel-mcp answers, so a misheard reference fails instead of passing.
+_FAKE_GUESTS: dict[tuple[str, str], dict[str, Any]] = {
+    ("LRK-1001", "okafor"): {"guest_id": 1, "first_name": "Amara", "booking_id": 1001},
+    ("LRK-1002", "brandt"): {"guest_id": 2, "first_name": "Daniel", "booking_id": 1002},
+}
+
+
+def _verify(arguments: dict[str, Any]) -> dict[str, Any]:
+    ref = str(arguments.get("booking_ref", "")).strip().upper().replace(" ", "")
+    last_name = str(arguments.get("last_name", "")).strip().lower()
+    guest = _FAKE_GUESTS.get((ref, last_name))
+    if guest is None:
+        return {"verified": False}
+    booking = {"booking_id": guest["booking_id"], "booking_ref": ref, "status": "confirmed"}
+    return {
         "verified": True,
-        "guest_name": "Alex Rivera",
-        "bookings": [{"booking_id": 1001, "booking_ref": "LRK-1001", "status": "confirmed"}],
-    },
+        "guest_id": guest["guest_id"],
+        "first_name": guest["first_name"],
+        "bookings": [booking],
+    }
+
+
+_CANNED: dict[str, Any] = {
     "check_availability": {
         "rooms": [
             {"room_type": "Classic Queen", "nightly_rate": 189.0, "available": 3},
@@ -189,7 +207,9 @@ class FakeGateway:
         reason: str | None,
         arguments: dict[str, Any] | None = None,
     ) -> ToolResult:
-        if outcome is Outcome.RAN:
+        if outcome is Outcome.RAN and name == "verify_guest":
+            content = json.dumps(_verify(arguments or {}))
+        elif outcome is Outcome.RAN:
             content = json.dumps(_CANNED.get(name) or _money_row(name, arguments or {}))
         elif outcome is Outcome.PENDING:
             content = "Waiting for a manager's approval."

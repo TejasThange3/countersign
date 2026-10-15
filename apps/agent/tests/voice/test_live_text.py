@@ -34,7 +34,7 @@ async def test_availability_then_small_refund() -> None:
         assert r1.models
 
         r2 = await session.send(
-            "Also, I'm already verified, booking LRK-1001, last name Rivera. "
+            "Also, I'm already verified, booking LRK-1001, last name Okafor. "
             "Please refund 40 dollars on booking 1001 because the minibar charge was wrong."
         )
         r3 = r2

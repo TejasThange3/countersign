@@ -62,7 +62,7 @@ def _cooling_down(model: str) -> bool:
 def _start_cooldown(model: str, seconds: float) -> None:
     if seconds <= 0:
         return
-    logger.warning("Gemini %s skipped for the next %.0fs after a failure", model, seconds)
+    logger.warning("%s skipped for the next %.0fs after a failure", model, seconds)
     _cooldown_until[model] = time.monotonic() + seconds
 
 
@@ -206,11 +206,14 @@ class FallbackGroqLLMService(GroqLLMService):
         fallback_model: str | None,
         max_rate_limit_wait_s: float = 10.0,
         cooldown_s: float = 60.0,
+        request_timeout_s: float = 8.0,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
         # The openai SDK retries 429/5xx itself (2 retries, own backoff); this class decides.
-        self._client = self._client.with_options(max_retries=0)
+        # Its default timeout is 10 minutes: live, a hung connection held a turn for 26 s
+        # before failing. A short one moves to the fallback while the caller still waits.
+        self._client = self._client.with_options(max_retries=0, timeout=request_timeout_s)
         self._fallback_model = fallback_model
         self._max_rate_limit_wait_s = max_rate_limit_wait_s
         self._cooldown_s = cooldown_s

@@ -224,6 +224,18 @@ async def test_hung_wait_is_a_refusal() -> None:
     assert output.outcomes[0].reason == "hold_wait_overrun"
 
 
+async def test_fake_verify_only_accepts_seed_identities() -> None:
+    gateway = FakeGateway("c1")
+    ok = await gateway.call("verify_guest", {"booking_ref": "lrk-1001 ", "last_name": "Okafor"})
+    misheard = await gateway.call("verify_guest", {"booking_ref": "LRC-101", "last_name": "Okafor"})
+    wrong_name = await gateway.call(
+        "verify_guest", {"booking_ref": "LRK-1001", "last_name": "Brandt"}
+    )
+    assert '"verified": true' in ok.content and '"first_name": "Amara"' in ok.content
+    assert misheard.content == '{"verified": false}'
+    assert wrong_name.content == '{"verified": false}'
+
+
 class CommitThenSlow(FakeGateway):
     """The action commits at once (it is recorded in `calls`), then the reply is slow."""
 
