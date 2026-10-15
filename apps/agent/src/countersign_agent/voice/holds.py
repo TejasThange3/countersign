@@ -62,6 +62,9 @@ DUPLICATE_RESULT = (
 # Function result when the gateway itself failed. Says nothing about why, by design.
 GATEWAY_ERROR_RESULT = "ERROR: that could not be done right now, so nothing was changed."
 
+# Function result for a call that arrives after the caller hung up.
+CALL_ENDED_RESULT = "CALL_ENDED: the call has ended, so this was not run."
+
 # Seconds allowed past the gateway's own timeout before we give up on a misbehaving wait.
 WAIT_GRACE_S = 10.0
 
@@ -131,6 +134,12 @@ class ToolRouter:
 
     async def handle(self, params: FunctionCallParams) -> None:
         name = params.function_name
+        if self._closed:
+            # Hangup has begun: a handler that was already queued must not start an action
+            # that close() will never see.
+            logger.warning("tool %s requested after hangup; not sent to the gateway", name)
+            await params.result_callback(CALL_ENDED_RESULT)
+            return
         if name in self._pending:
             logger.info("tool %s called again during its hold; not sent to the gateway", name)
             await params.result_callback(STILL_WAITING_RESULT.format(tool=name))

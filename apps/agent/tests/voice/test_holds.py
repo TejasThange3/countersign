@@ -291,6 +291,23 @@ async def test_hangup_cancels_an_acting_call_in_flight() -> None:
     assert router.has_pending_holds() is False
 
 
+async def test_handler_queued_during_hangup_never_reaches_gateway() -> None:
+    gateway = CommitThenSlow("c1")
+    router = make_router(gateway, RecordingOutput())
+    in_flight = asyncio.create_task(router.handle(FakeParams("issue_refund", REFUND_40, [])))  # type: ignore[arg-type]
+    await asyncio.sleep(0.02)
+
+    closing = asyncio.create_task(router.close())
+    await asyncio.sleep(0)  # close() is now awaiting the in-flight call's cancellation
+    late = FakeParams("apply_comp_credit", {"booking_id": 1001, "amount": 20.0}, [])
+    await router.handle(late)  # type: ignore[arg-type]
+    await closing
+    await asyncio.gather(in_flight, return_exceptions=True)
+
+    assert [name for name, _ in gateway.calls] == ["issue_refund"]
+    assert late.results[0][0].startswith("CALL_ENDED")
+
+
 async def test_barge_in_cancels_a_read() -> None:
     gateway = CommitThenSlow("c1")
     output = RecordingOutput()
