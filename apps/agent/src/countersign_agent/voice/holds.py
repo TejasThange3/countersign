@@ -161,6 +161,7 @@ class ToolRouter:
         delivery = _Delivery()
         task = asyncio.create_task(self._run(name, params, delivery), name=f"call:{name}")
         self._acting[name] = task
+        task.add_done_callback(_log_failure)
         try:
             await asyncio.shield(task)
         except asyncio.CancelledError:
@@ -211,7 +212,8 @@ class ToolRouter:
         """Block until no hold is pending (used by text mode to return a whole turn)."""
         while self._pending or self._acting:
             tasks = [*self._pending.values(), *self._acting.values()]
-            await asyncio.gather(*tasks, return_exceptions=True)
+            # asyncio.wait, unlike gather, never cancels the tasks if this wait is cancelled.
+            await asyncio.wait(tasks)
 
     async def close(self) -> None:
         """The caller hung up: cancel every pending wait so no held tool runs afterwards."""
@@ -265,6 +267,12 @@ class ToolRouter:
     async def _notify(self, result: ToolResult) -> None:
         if self._on_result is not None:
             await self._on_result(result)
+
+
+def _log_failure(task: asyncio.Task[None]) -> None:
+    """An abandoned acting call has no handler left to see its exception; log it."""
+    if not task.cancelled() and (error := task.exception()) is not None:
+        logger.error("tool call task %s failed", task.get_name(), exc_info=error)
 
 
 def _refused(held: ToolResult, reason: str) -> ToolResult:
