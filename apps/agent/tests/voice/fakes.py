@@ -98,6 +98,8 @@ def hotel_script(messages: list[dict[str, Any]]) -> Step:
         return Step(text="Done. " + text_of(msg)[:60])
     if role == "developer" and "approved and completed" in text:
         return Step(text="Good news, the manager approved it and it's done.")
+    if role == "developer" and "in time" in text:
+        return Step(text="I'm sorry, I couldn't reach a manager in time.")
     if role == "developer":
         return Step(text="I'm sorry, the manager did not approve that.")
     if "availab" in text:

@@ -303,8 +303,14 @@ def hold_outcome_message(
         status = "APPROVED and completed"
     elif result.outcome is Outcome.ERROR:
         status = "approved, but the action itself FAILED"
+    elif result.reason == "rejected":
+        status = "DECLINED by the manager, so nothing was done"
     else:
-        status = "NOT approved, so nothing was done"
+        # A timeout (or a failed wait) is not a manager's "no": nobody decided.
+        status = (
+            "NOT decided in time because no manager could be reached, so nothing was done. "
+            "Say you couldn't reach a manager in time; do not say it was declined"
+        )
     return {
         "role": "developer",
         "content": (

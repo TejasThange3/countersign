@@ -5,12 +5,14 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from countersign_agent.contracts import Outcome, ToolResult
+import pytest
+from countersign_agent.contracts import Decision, Outcome, ToolResult
 from countersign_agent.voice.fake_gateway import FakeGateway, FakeGatewayFactory
 from countersign_agent.voice.holds import (
     HOLD_ANNOUNCEMENT,
     PENDING_RESULT,
     ToolRouter,
+    hold_outcome_message,
 )
 from countersign_agent.voice.text_mode import TextSession
 from fakes import FakeScriptedLLM, hotel_script, make_settings
@@ -234,6 +236,30 @@ async def test_fake_verify_only_accepts_seed_identities() -> None:
     assert '"verified": true' in ok.content and '"first_name": "Amara"' in ok.content
     assert misheard.content == '{"verified": false}'
     assert wrong_name.content == '{"verified": false}'
+
+
+@pytest.mark.parametrize(
+    ("reason", "phrase", "absent"),
+    [
+        ("rejected", "DECLINED by the manager", "in time"),
+        ("timeout", "couldn't reach a manager in time", "DECLINED"),  # the bridge's reason
+        ("approval_timeout", "couldn't reach a manager in time", "DECLINED"),
+        ("hold_wait_error", "couldn't reach a manager in time", "DECLINED"),
+    ],
+)
+def test_outcome_wording_separates_a_no_from_no_answer(
+    reason: str, phrase: str, absent: str
+) -> None:
+    result = ToolResult(
+        tool="issue_refund",
+        decision=Decision.HOLD,
+        outcome=Outcome.NOT_RUN,
+        content="not done",
+        reason=reason,
+        armoriq_mode="live",
+    )
+    content = hold_outcome_message("issue_refund", result)["content"]
+    assert phrase in content and absent not in content
 
 
 class CommitThenSlow(FakeGateway):

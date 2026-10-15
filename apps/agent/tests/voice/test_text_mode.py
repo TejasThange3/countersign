@@ -69,9 +69,33 @@ async def test_hold_timeout_is_a_refusal(llm: FakeScriptedLLM) -> None:
     finally:
         await session.close()
     assert reply.messages[0] == HOLD_ANNOUNCEMENT
-    assert reply.messages[-1] == "I'm sorry, the manager did not approve that."
+    assert reply.messages[-1] == "I'm sorry, I couldn't reach a manager in time."
     assert reply.tool_results[-1].outcome is Outcome.NOT_RUN
     assert reply.tool_results[-1].reason == "approval_timeout"
+
+
+@pytest.mark.parametrize("resolution", ["reject", "approve"])
+async def test_a_hold_decided_at_once_is_still_relayed(
+    llm: FakeScriptedLLM, resolution: str
+) -> None:
+    # Live, a rejection that came back quickly was never spoken: the outcome reached the LLM
+    # before the PENDING tool result was in the context, so it answered "still pending".
+    factory = FakeGatewayFactory(hold_resolution=resolution, approval_delay_s=0)  # type: ignore[arg-type]
+    session = await open_session(factory, llm)
+    try:
+        reply = await session.send("Please refund 250 dollars")
+    finally:
+        await session.close()
+    expected = (
+        "I'm sorry, the manager did not approve that."
+        if resolution == "reject"
+        else "Good news, the manager approved it and it's done."
+    )
+    assert reply.messages[0] == HOLD_ANNOUNCEMENT
+    assert reply.messages[-1] == expected
+    assert reply.tool_results[-1].outcome is (
+        Outcome.NOT_RUN if resolution == "reject" else Outcome.RAN
+    )
 
 
 async def test_blocked_call_is_refused(approve_session: TextSession) -> None:
