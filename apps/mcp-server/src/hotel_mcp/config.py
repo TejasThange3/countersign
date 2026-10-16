@@ -45,6 +45,14 @@ class Settings(BaseSettings):
     @field_validator("database_url")
     @classmethod
     def _normalize(cls, value: str) -> str:
+        value = value.strip()
+        # Seen on Railway: a variable reference to a database service that doesn't exist (or
+        # has another name) arrives empty or as the literal reference text.
+        if not value or "${{" in value:
+            raise ValueError(
+                "DATABASE_URL is empty or an unresolved reference "
+                f"({value!r}); point it at the Postgres service's DATABASE_URL"
+            )
         return normalize_database_url(value)
 
     @field_validator("mcp_bearer_token")

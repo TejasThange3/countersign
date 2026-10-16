@@ -26,3 +26,12 @@ def test_reset_requires_yes_flag() -> None:
     with pytest.raises(SystemExit) as exc:
         main(["reset"])
     assert exc.value.code == 2
+
+
+@pytest.mark.parametrize("bad", ["", "   ", "${{Postgres.DATABASE_URL}}"])
+def test_empty_or_unresolved_database_url_fails_with_a_clear_message(bad: str) -> None:
+    from hotel_mcp.config import Settings
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="DATABASE_URL is empty or an unresolved reference"):
+        Settings(_env_file=None, database_url=bad)  # type: ignore[call-arg]
