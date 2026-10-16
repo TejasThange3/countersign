@@ -20,6 +20,7 @@ import asyncio
 import importlib
 import logging
 import os
+import time
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -123,13 +124,16 @@ def create_app(
     gateway_factory = factory or load_factory(settings.gateway_factory)
     desk = manager_desk or default_manager_desk(settings)
     text_calls: dict[str, TextSession] = {}
+    last_used: dict[str, float] = {}  # call id -> time.monotonic() of its last request
     webrtc_sessions: set[str] = set()
     audio_tasks: set[asyncio.Task[None]] = set()
     webrtc = SmallWebRTCRequestHandler()
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        sweeper = asyncio.create_task(sweep_idle_text_calls(), name="text-call-sweeper")
         yield
+        sweeper.cancel()
         for session in list(text_calls.values()):
             try:
                 await session.close()
@@ -231,11 +235,31 @@ def create_app(
         session = text_calls.get(call_id)
         if session is None:
             raise HTTPException(status_code=404, detail=f"no text call {call_id}")
+        last_used[call_id] = time.monotonic()
         return session
+
+    async def sweep_idle_text_calls() -> None:
+        """Hang up text calls left open by visitors who closed the tab."""
+        while True:
+            await asyncio.sleep(min(60.0, settings.text_call_idle_s / 2))
+            cutoff = time.monotonic() - settings.text_call_idle_s
+            for call_id, session in list(text_calls.items()):
+                if last_used.get(call_id, 0.0) > cutoff or not session.idle:
+                    continue
+                text_calls.pop(call_id, None)
+                last_used.pop(call_id, None)
+                logger.info("text call %s idle; hanging up", call_id)
+                try:
+                    await session.close()
+                except Exception:
+                    logger.exception("closing idle text call %s failed", call_id)
 
     @app.post("/text/calls", status_code=201)
     async def open_text_call() -> TextCallOpened:
+        if len(text_calls) >= settings.max_text_calls:
+            raise HTTPException(status_code=503, detail="every line is busy; try again soon")
         call_id = f"text-{uuid.uuid4().hex[:8]}"
+        last_used[call_id] = time.monotonic()
         text_calls[call_id] = await TextSession.open(
             call_id, gateway_factory, settings, llm_factory=llm_factory
         )
@@ -278,6 +302,7 @@ def create_app(
     async def hang_up(call_id: str) -> None:
         session = text_call(call_id)
         del text_calls[call_id]
+        last_used.pop(call_id, None)
         await session.close()
 
     return app

@@ -181,3 +181,31 @@ def test_cors_allows_only_the_configured_website() -> None:
         assert ok.headers.get("access-control-allow-origin") == "https://preview.example"
         other = client.get("/health", headers={"Origin": "https://evil.example"})
         assert "access-control-allow-origin" not in other.headers
+
+
+def test_idle_text_calls_are_hung_up() -> None:
+    import time as _time
+
+    factory = FakeGatewayFactory()
+    app = create_app(
+        make_settings(text_call_idle_s=0.2),
+        factory,
+        llm_factory=lambda _s: FakeScriptedLLM(hotel_script),
+    )
+    with TestClient(app) as client:
+        call_id = client.post("/text/calls").json()["call_id"]
+        _time.sleep(0.6)  # the sweeper runs every idle/2 seconds
+        assert client.post(f"/text/calls/{call_id}/collect").status_code == 404
+        assert factory.opened[0].closed
+
+
+def test_open_calls_are_capped() -> None:
+    app = create_app(
+        make_settings(max_text_calls=1),
+        FakeGatewayFactory(),
+        llm_factory=lambda _s: FakeScriptedLLM(hotel_script),
+    )
+    with TestClient(app) as client:
+        assert client.post("/text/calls").status_code == 201
+        busy = client.post("/text/calls")
+        assert busy.status_code == 503

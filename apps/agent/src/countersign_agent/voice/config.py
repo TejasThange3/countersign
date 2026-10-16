@@ -143,6 +143,10 @@ class AgentSettings(BaseSettings):
     agent_port: int = 7860
     # Browser origins allowed to call this API (the website), comma-separated. Empty: none.
     cors_origins: str = ""
+    # Public demo hygiene: a text call nobody has touched for this long is hung up (a
+    # visitor who closed the tab), and no more than this many may be open at once.
+    text_call_idle_s: float = Field(default=600.0, gt=0)
+    max_text_calls: int = Field(default=25, gt=0)
     # Public demo only: what the agent says when every LLM model is rate limited or down
     # (see FallbackGroqLLMService). Empty: the failure is raised (evals rely on that).
     llm_busy_message: str = ""

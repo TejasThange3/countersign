@@ -227,6 +227,11 @@ class TextSession:
         async with self._lock:
             return await self._collect(wait_for_holds, timeout_s)
 
+    @property
+    def idle(self) -> bool:
+        """No turn in progress and nothing waiting for a manager."""
+        return not self._lock.locked() and not self.core.router.has_pending_holds()
+
     async def close(self) -> None:
         """Hang up. Pending holds are cancelled before the gateway closes."""
         if self._closed:
