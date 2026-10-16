@@ -28,6 +28,9 @@ export function useAgentCall() {
   const [error, setError] = useState<string | null>(null);
   const callId = useRef<string | null>(null);
   const opening = useRef<Promise<string> | null>(null);
+  // Set synchronously: React state updates too late to stop a quick double-click
+  // from sending the same line twice (seen live).
+  const sending = useRef(false);
   const nextId = useRef(0);
 
   const push = useCallback((who: Line["who"], texts: string[]) => {
@@ -95,7 +98,8 @@ export function useAgentCall() {
     async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed || status === "thinking" || status === "held" || status === "deciding") return;
-      if (status === "connecting") return;
+      if (status === "connecting" || sending.current) return;
+      sending.current = true;
       setError(null);
       push("caller", [trimmed]);
       setStatus("thinking");
@@ -113,6 +117,8 @@ export function useAgentCall() {
         }
       } catch (e) {
         fail(e);
+      } finally {
+        sending.current = false;
       }
     },
     [status, push, record, fail, awaitOutcome, ensureCall],
