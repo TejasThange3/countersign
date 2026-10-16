@@ -121,3 +121,28 @@ the final reviewer fixes (plans opened on one dedicated thread, a stale hold dro
 hang-up), it ran once more at 11:55:51Z (`20261015T115551Z-live-bridge.json`). It passed with
 the same decisions (row 22 for the $40, nothing for the $250). That is the run that matches the
 final code.
+
+## Update 2026-10-17: the duplicate tool names now match the toy server
+
+Finding 3 no longer holds. A decision-only probe as `+guest` (no tool run) returned
+`no_matching_policy` for exactly the three tools that also exist on the toy `hotel-mcp`
+(`get_hotel_info`, `issue_refund`, `export_guest_list`), while every other tool still matched
+`countersign`. So ArmorIQ now evaluates those names against `hotel-mcp`, whatever server the
+plan step names. Live, a verified guest's $40 refund was blocked instead of held, and
+"what time is check-in?" was blocked too. The toy server still can't be deleted or edited.
+
+Fix (set by hand in the console): a second policy, **`countersign-legacy`**, targeting the toy
+`hotel-mcp`, default Block, with the same rows as above for its tools:
+
+| Tool | Base | `+unverified` | `+guest` |
+|---|---|---|---|
+| get_hotel_info | Allow | Allow | Allow |
+| issue_refund | Block | Block | **Hold** |
+| export_guest_list | Block | Block | Block |
+| spike_uncovered_probe | Block | Block | Block |
+
+Re-probed after saving: `+guest` gets get_hotel_info **allow**, issue_refund **hold**,
+export_guest_list **block** (`tool_denied`), all `countersign-legacy`; apply_comp_credit
+**hold** (`countersign`). `+unverified` gets get_hotel_info allow, issue_refund and
+export_guest_list block. A new `hotel-mcp-3` would not have helped: it would share the same
+three names with the toy server.
