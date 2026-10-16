@@ -42,3 +42,6 @@ docs/research/PRIVATE-*.md
 *.wav
 *.pcm
 debug-recordings/
+
+# Local copies of the console screenshots (committed versions live in apps/dashboard/public/proof)
+Proof ss/
