@@ -62,5 +62,6 @@ def make_vad(settings: AgentSettings) -> SileroVADAnalyzer:
             confidence=settings.vad_confidence,
             min_volume=settings.vad_min_volume,
             start_secs=settings.vad_start_secs,
+            stop_secs=settings.vad_stop_secs,
         )
     )

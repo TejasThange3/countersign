@@ -76,6 +76,9 @@ class AgentSettings(BaseSettings):
     stt_provider: Literal["whisper", "groq", "elevenlabs"] = "whisper"
     # Groq's hosted Whisper; turbo is the fast, cheap one and handles English well.
     groq_stt_model: str = "whisper-large-v3-turbo"
+    # Format hint for Groq Whisper. Measured on synthesized clips: it writes "LRK-1001"
+    # instead of "LRK1001" and changed nothing else. Set GROQ_STT_PROMPT= (empty) to disable.
+    groq_stt_prompt: str = "Hotel front desk call. Booking references look like LRK-1001."
     # With STT_PROVIDER=groq: send an utterance to ElevenLabs Scribe when Groq fails or
     # rate-limits, then skip Groq for the cooldown. Costs ElevenLabs credits only when used.
     stt_fallback_elevenlabs: bool = True
@@ -106,6 +109,10 @@ class AgentSettings(BaseSettings):
     vad_confidence: float = Field(default=0.7, ge=0, le=1)
     vad_min_volume: float = Field(default=0.4, ge=0, le=1)
     vad_start_secs: float = Field(default=0.2, gt=0)
+    # Silence that ends a speech segment. Each segment is transcribed on its own, so Pipecat's
+    # 0.2 s split "LRK 1001 ... last name Okafor" into fragments in a live call, and Whisper,
+    # given half a second with no context, heard "Okay for". 0.5 s keeps a sentence together.
+    vad_stop_secs: float = Field(default=0.5, gt=0)
 
     hold_timeout_s: float = Field(default=60.0, gt=0)
     hold_filler_interval_s: float = Field(default=6.0, gt=0)

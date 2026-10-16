@@ -61,7 +61,9 @@ def make_stt(settings: AgentSettings) -> STTService:
         use_fallback = settings.stt_fallback_elevenlabs and settings.elevenlabs_api_key
         return FallbackGroqSTTService(
             api_key=settings.groq_api_key,
-            settings=FallbackGroqSTTService.Settings(model=settings.groq_stt_model),
+            settings=FallbackGroqSTTService.Settings(
+                model=settings.groq_stt_model, prompt=settings.groq_stt_prompt or None
+            ),
             fallback=ElevenLabsTranscriber(settings.elevenlabs_api_key) if use_fallback else None,
             groq_timeout_s=settings.groq_stt_timeout_s,
             cooldown_s=settings.groq_stt_cooldown_s,
