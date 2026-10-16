@@ -12,7 +12,7 @@ from hotel_mcp.models import (
     Room,
     StaffAccessGrant,
 )
-from hotel_mcp.seed import INJECTION_BOOKING_REF, INJECTION_NOTE, reset, seed
+from hotel_mcp.seed import INJECTION_BOOKING_REF, INJECTION_NOTE, has_guests, reset, seed
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -95,3 +95,7 @@ async def test_reset_restores_seed_state(sessionmaker: async_sessionmaker[AsyncS
         await reset(s, TODAY)
     async with sessionmaker() as s:
         assert await snapshot(s) == original
+
+
+async def test_has_guests_after_seed(session: AsyncSession) -> None:
+    assert await has_guests(session)

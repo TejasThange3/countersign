@@ -28,5 +28,7 @@ RUN useradd --create-home --uid 1000 app
 USER app
 
 EXPOSE 8000
-# Apply migrations on every start (idempotent), then serve on $PORT. Seeding stays a manual step.
-CMD ["sh", "-c", "hotel-mcp migrate && exec hotel-mcp serve"]
+# Apply migrations on every start (idempotent), then serve on $PORT. Seeding is opt-in:
+# SEED_IF_EMPTY=1 loads the synthetic demo data only into an empty database, so a host like
+# Railway can seed over its private network without exposing Postgres publicly.
+CMD ["sh", "-c", "hotel-mcp migrate && if [ \"$SEED_IF_EMPTY\" = 1 ]; then hotel-mcp seed --if-empty; fi && exec hotel-mcp serve"]

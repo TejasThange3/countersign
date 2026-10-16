@@ -64,9 +64,13 @@ def _status(check_in: date, check_out: date, today: date) -> str:
     return "confirmed"
 
 
+async def has_guests(session: AsyncSession) -> bool:
+    return bool(await session.scalar(select(func.count()).select_from(Guest)))
+
+
 async def seed(session: AsyncSession, today: date) -> None:
     """Load the seed rows into an empty database. Refuses if guests already exist."""
-    if await session.scalar(select(func.count()).select_from(Guest)):
+    if await has_guests(session):
         raise RuntimeError("Database already has guests; use `hotel-mcp reset` to start over.")
     # Seeded RNG for reproducible fake data, not for anything security related.
     rng = random.Random(SEED)  # noqa: S311 - deterministic test fixtures, not cryptography

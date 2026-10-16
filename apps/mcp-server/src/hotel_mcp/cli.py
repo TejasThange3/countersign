@@ -29,13 +29,18 @@ def migrate(url: str | None = None) -> None:
     command.upgrade(alembic_config(url), "head")
 
 
-async def _load_seed(reset: bool) -> None:
+async def _load_seed(reset: bool, if_empty: bool = False) -> bool:
+    """Load the seed; returns False when `if_empty` found guests and left the data alone."""
+    seeded = True
     async with get_sessionmaker()() as session, session.begin():
         if reset:
             await seed_data.reset(session, date.today())
+        elif if_empty and await seed_data.has_guests(session):
+            seeded = False
         else:
             await seed_data.seed(session, date.today())
     await get_engine().dispose()
+    return seeded
 
 
 def serve() -> None:
@@ -51,7 +56,12 @@ def main(argv: list[str] | None = None) -> None:
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("serve", help="run the MCP server on $PORT (streamable HTTP at /mcp)")
     sub.add_parser("migrate", help="apply database migrations (alembic upgrade head)")
-    sub.add_parser("seed", help="load synthetic seed data into an empty database")
+    seed_cmd = sub.add_parser("seed", help="load synthetic seed data into an empty database")
+    seed_cmd.add_argument(
+        "--if-empty",
+        action="store_true",
+        help="do nothing (instead of failing) when the database already has guests",
+    )
     reset_cmd = sub.add_parser("reset", help="wipe all rows and reload the seed data")
     reset_cmd.add_argument(
         "--yes", action="store_true", help="confirm: this deletes every row in DATABASE_URL"
@@ -63,8 +73,8 @@ def main(argv: list[str] | None = None) -> None:
     elif args.command == "migrate":
         migrate()
     elif args.command == "seed":
-        asyncio.run(_load_seed(reset=False))
-        print("Seeded.")
+        seeded = asyncio.run(_load_seed(reset=False, if_empty=args.if_empty))
+        print("Seeded." if seeded else "Already has guests; seed skipped.")
     elif args.command == "reset":
         if not args.yes:
             parser.error("reset deletes every row in DATABASE_URL; re-run with --yes")
