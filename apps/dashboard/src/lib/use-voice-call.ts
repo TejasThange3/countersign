@@ -28,6 +28,9 @@ export function useVoiceCall() {
       switch (e.type) {
         case "call":
           callId.current = e.call_id;
+          break;
+        case "ready":
+          // The ArmorIQ session is open and the agent is listening.
           setStatus("live");
           break;
         case "busy":

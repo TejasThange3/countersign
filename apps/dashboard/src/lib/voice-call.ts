@@ -13,6 +13,7 @@ const OUT_RATE = 24000;
 export type VoiceEvent =
   | { type: "call"; call_id: string }
   | { type: "busy" }
+  | { type: "ready" }
   | { type: "caller" | "agent"; text: string }
   | { type: "interrupt" }
   | {

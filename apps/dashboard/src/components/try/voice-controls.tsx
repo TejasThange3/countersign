@@ -55,7 +55,7 @@ export function VoiceControls({
         </div>
         <p className="truncate text-[13px] text-muted">
           {status === "connecting"
-            ? "Connecting… allow the microphone if asked"
+            ? "Opening a secure ArmorIQ session… allow the microphone if asked"
             : live
               ? agentSpeaking
                 ? "Agent speaking. Talk over it to interrupt."
