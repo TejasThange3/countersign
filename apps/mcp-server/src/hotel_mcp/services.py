@@ -6,6 +6,7 @@ decides whether a caller is *allowed* to do something: that is ArmorIQ's job (AG
 so there are no permission checks or money limits here.
 """
 
+import re
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
@@ -264,19 +265,65 @@ async def _reload(session: AsyncSession, booking: Booking) -> BookingDetail:
 # --- Read tier ---
 
 
+def normalize_booking_ref(spoken: str) -> str | None:
+    """The canonical ref from what speech-to-text made of it, or None.
+
+    Every ref is LRK-<digits>, so the letters carry no information: callers spell them and
+    transcription mangles them ("LRK 1001", "LRKV1001", "El are kay 1001"). The digits are
+    what identify the booking.
+    """
+    digits = re.sub(r"\D", "", spoken)
+    return f"LRK-{digits}" if 4 <= len(digits) <= 6 else None
+
+
+def _squash(name: str) -> str:
+    return re.sub(r"[^a-z]", "", name.lower())
+
+
+def _within_one_edit(a: str, b: str) -> bool:
+    """True when a and b differ by at most one inserted, deleted or substituted letter."""
+    if abs(len(a) - len(b)) > 1:
+        return False
+    if len(a) > len(b):
+        a, b = b, a
+    i = j = edits = 0
+    while i < len(a) and j < len(b):
+        if a[i] != b[j]:
+            edits += 1
+            if edits > 1:
+                return False
+            if len(a) == len(b):
+                i += 1
+            j += 1
+        else:
+            i += 1
+            j += 1
+    return edits + (len(b) - j) <= 1
+
+
+def surname_matches(heard: str, actual: str) -> bool:
+    """Spoken surnames arrive split or one letter off ("Okay for" for Okafor, "Lindquist"
+    for Lindqvist). Allow one edit on names of five or more letters; the booking ref must
+    still match exactly and the bridge locks verification after three misses."""
+    h, a = _squash(heard), _squash(actual)
+    if not h:
+        return False
+    return h == a or (len(a) >= 5 and _within_one_edit(h, a))
+
+
 async def verify_guest(session: AsyncSession, booking_ref: str, last_name: str) -> VerifyResult:
+    ref = normalize_booking_ref(booking_ref)
+    if ref is None:
+        return VerifyResult(verified=False)
     match = await session.execute(
-        select(Guest.id, Guest.first_name)
+        select(Guest.id, Guest.first_name, Guest.last_name)
         .join(Booking, Booking.guest_id == Guest.id)
-        .where(
-            func.upper(Booking.ref) == booking_ref.strip().upper(),
-            func.lower(Guest.last_name) == last_name.strip().lower(),
-        )
+        .where(Booking.ref == ref)
     )
     row = match.first()
-    if row is None:
+    if row is None or not surname_matches(last_name, row.last_name):
         return VerifyResult(verified=False)
-    guest_id, first_name = row
+    guest_id, first_name, _ = row
     bookings = await session.scalars(
         select(Booking).where(Booking.guest_id == guest_id).order_by(Booking.check_in)
     )

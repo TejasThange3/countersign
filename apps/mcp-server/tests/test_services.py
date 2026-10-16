@@ -43,7 +43,7 @@ async def test_verify_guest_is_case_and_whitespace_insensitive(session: AsyncSes
 
 @pytest.mark.parametrize(
     ("ref", "last"),
-    [("LRK-1001", "Brandt"), ("LRK-9999", "Okafor"), ("", ""), ("LRK-1001", "Okafo")],
+    [("LRK-1001", "Brandt"), ("LRK-9999", "Okafor"), ("", ""), ("LRK-1001", "Okaf")],
 )
 async def test_verify_guest_mismatch_returns_unverified_without_guest_id(
     session: AsyncSession, ref: str, last: str
@@ -241,3 +241,42 @@ async def test_delete_guest_profile_cascades(session: AsyncSession) -> None:
 async def test_grant_staff_access_writes_row(session: AsyncSession) -> None:
     out = await svc.grant_staff_access(session, "eve@example.com", "manager")
     assert (await session.get(StaffAccessGrant, out.grant_id)) is not None
+
+
+@pytest.mark.parametrize(
+    ("ref", "last"),
+    [
+        ("LRK 1001", "Okafor"),  # spoken with a space
+        ("LRKV1001", "Okafor"),  # a misheard letter: the digits identify the booking
+        ("1001", "Okafor"),
+        ("LRK-1001", "Okay for"),  # surname split by speech-to-text, one letter off
+        ("LRK-1003", "Lindquist"),  # Lindqvist, one substituted letter
+    ],
+)
+async def test_verify_guest_tolerates_speech_to_text(
+    session: AsyncSession, ref: str, last: str
+) -> None:
+    assert (await svc.verify_guest(session, ref, last)).verified
+
+
+@pytest.mark.parametrize(
+    ("ref", "last"),
+    [
+        ("LRK-1001", "Brandt"),  # someone else's surname
+        ("LRK-1002", "Okafor"),  # someone else's booking
+        ("LRK-1001", "Okaforrr"),  # two letters off
+        ("LRK-1001", ""),
+        ("LRK", "Okafor"),  # no digits
+        ("LRK-12", "Okafor"),
+    ],
+)
+async def test_verify_guest_still_rejects_wrong_details(
+    session: AsyncSession, ref: str, last: str
+) -> None:
+    assert not (await svc.verify_guest(session, ref, last)).verified
+
+
+def test_short_surnames_must_match_exactly() -> None:
+    assert svc.surname_matches("Li", "Li")
+    assert not svc.surname_matches("Lu", "Li")
+    assert not svc.surname_matches("Kahn", "Khan")  # under five letters: no tolerance
