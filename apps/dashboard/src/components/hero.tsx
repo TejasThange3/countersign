@@ -1,4 +1,5 @@
-import { ArrowDown, GithubLogo } from "@phosphor-icons/react/dist/ssr";
+import Link from "next/link";
+import { ArrowRight, GithubLogo } from "@phosphor-icons/react/dist/ssr";
 import { Guilloche } from "@/components/guilloche";
 import { Reveal } from "@/components/reveal";
 import { REPO_URL } from "@/lib/site";
@@ -26,17 +27,17 @@ export function Hero() {
           </Reveal>
           <Reveal delay={0.16}>
             <div className="mt-10 flex flex-wrap items-center gap-3">
-              <a
-                href="#live"
+              <Link
+                href="/try"
                 className="group inline-flex items-center gap-2 rounded-full bg-accent px-6 py-3 text-[15px] font-medium text-ink transition-[background-color,transform] duration-200 hover:bg-accent-hover active:scale-[0.98]"
               >
-                Watch a live call
-                <ArrowDown
+                Try to talk it into a refund
+                <ArrowRight
                   size={16}
                   weight="bold"
-                  className="transition-transform duration-200 group-hover:translate-y-0.5"
+                  className="transition-transform duration-200 group-hover:translate-x-0.5"
                 />
-              </a>
+              </Link>
               <a
                 href={REPO_URL}
                 className="inline-flex items-center gap-2 rounded-full border border-line-strong bg-ink/40 px-6 py-3 text-[15px] text-text backdrop-blur transition-[background-color,transform] duration-200 hover:bg-panel-2 active:scale-[0.98]"
