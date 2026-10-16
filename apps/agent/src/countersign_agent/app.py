@@ -26,6 +26,7 @@ from contextlib import asynccontextmanager
 from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from pipecat.transports.smallwebrtc.connection import SmallWebRTCConnection
 from pipecat.transports.smallwebrtc.request_handler import (
@@ -143,6 +144,15 @@ def create_app(
 
     app = FastAPI(title="Countersign voice agent", lifespan=lifespan)
     app.state.settings = settings
+    origins = [o.strip().rstrip("/") for o in settings.cors_origins.split(",") if o.strip()]
+    if origins:
+        # Only the website may call this API from a browser (CORS_ORIGINS).
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=origins,
+            allow_methods=["GET", "POST", "DELETE"],
+            allow_headers=["Content-Type"],
+        )
     app.state.factory = gateway_factory
     app.state.text_calls = text_calls
 

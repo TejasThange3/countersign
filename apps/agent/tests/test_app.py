@@ -165,3 +165,19 @@ def test_armoriq_refusal_is_reported_as_502() -> None:
         response = client.post(f"/text/calls/{call_id}/decision", json={"decision": "approve"})
         assert response.status_code == 502
         client.delete(f"/text/calls/{call_id}")
+
+
+def test_cors_allows_only_the_configured_website() -> None:
+    app = create_app(
+        make_settings(cors_origins="https://countersign.example, https://preview.example/"),
+        FakeGatewayFactory(),
+        llm_factory=lambda _s: FakeScriptedLLM(hotel_script),
+    )
+    with TestClient(app) as client:
+        ok = client.options(
+            "/text/calls",
+            headers={"Origin": "https://preview.example", "Access-Control-Request-Method": "POST"},
+        )
+        assert ok.headers.get("access-control-allow-origin") == "https://preview.example"
+        other = client.get("/health", headers={"Origin": "https://evil.example"})
+        assert "access-control-allow-origin" not in other.headers
