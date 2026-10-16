@@ -42,7 +42,7 @@ function TextConsole({ toggle }: { toggle: ReactNode }) {
           className="inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] text-muted transition-colors hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
         >
           <ArrowCounterClockwise size={14} />
-          <span className="hidden sm:inline">New call</span>
+          <span className="hidden xl:inline">New call</span>
         </button>
       }
       held={held}
@@ -128,7 +128,7 @@ function Shell({
           <div className="flex min-w-0 items-center gap-2.5">
             <span className={`h-2 w-2 shrink-0 rounded-full ${DOT[dot]}`} />
             <span className="truncate text-sm text-text">The Larkspur</span>
-            <span className="hidden font-mono text-[11px] text-dim sm:inline">{label}</span>
+            <span className="hidden font-mono text-[11px] text-dim xl:inline">{label}</span>
           </div>
           <div className="flex items-center gap-1">
             {action}
@@ -165,6 +165,7 @@ function ModeSwitch({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => voi
             type="button"
             role="tab"
             aria-selected={mode === m}
+            aria-label={m === "voice" ? "Voice call" : "Text call"}
             onClick={() => onChange(m)}
             className="relative cursor-pointer rounded-full px-3 py-1 text-[12px] font-medium capitalize outline-none transition-transform duration-200 active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-accent/60"
           >
