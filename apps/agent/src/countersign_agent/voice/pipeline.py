@@ -56,11 +56,15 @@ def make_stt(settings: AgentSettings) -> STTService:
         return ElevenLabsRealtimeSTTService(api_key=settings.elevenlabs_api_key)
 
     if settings.stt_provider == "groq":
-        from pipecat.services.groq.stt import GroqSTTService
+        from countersign_agent.voice.stt import ElevenLabsTranscriber, FallbackGroqSTTService
 
-        return GroqSTTService(
+        use_fallback = settings.stt_fallback_elevenlabs and settings.elevenlabs_api_key
+        return FallbackGroqSTTService(
             api_key=settings.groq_api_key,
-            settings=GroqSTTService.Settings(model=settings.groq_stt_model),
+            settings=FallbackGroqSTTService.Settings(model=settings.groq_stt_model),
+            fallback=ElevenLabsTranscriber(settings.elevenlabs_api_key) if use_fallback else None,
+            groq_timeout_s=settings.groq_stt_timeout_s,
+            cooldown_s=settings.groq_stt_cooldown_s,
         )
 
     from pipecat.services.whisper.stt import WhisperSTTService

@@ -76,6 +76,11 @@ class AgentSettings(BaseSettings):
     stt_provider: Literal["whisper", "groq", "elevenlabs"] = "whisper"
     # Groq's hosted Whisper; turbo is the fast, cheap one and handles English well.
     groq_stt_model: str = "whisper-large-v3-turbo"
+    # With STT_PROVIDER=groq: send an utterance to ElevenLabs Scribe when Groq fails or
+    # rate-limits, then skip Groq for the cooldown. Costs ElevenLabs credits only when used.
+    stt_fallback_elevenlabs: bool = True
+    groq_stt_timeout_s: float = Field(default=6.0, gt=0)
+    groq_stt_cooldown_s: float = Field(default=60.0, ge=0)
     # Measured on the same recorded call: distil-large-v3 got "My booking reference is LRK
     # 1001. Last name, Okafor." exactly; distil-medium.en lost the name and turned the number
     # into "1,000". Large runs on the GPU (186 s of audio in 1.4 s). distil-medium.en (~400 MB)

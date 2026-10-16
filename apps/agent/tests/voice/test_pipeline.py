@@ -60,30 +60,20 @@ def test_whisper_vocabulary_is_opt_in(
     assert built["settings"].hotwords == hotwords
 
 
-def test_groq_stt_uses_the_groq_key_and_model(monkeypatch: pytest.MonkeyPatch) -> None:
-    from pipecat.services.groq import stt as groq_stt
+def test_groq_stt_builds_with_elevenlabs_fallback() -> None:
+    from countersign_agent.voice.stt import ElevenLabsTranscriber, FallbackGroqSTTService
 
-    built: dict[str, Any] = {}
-
-    class RecordingGroq:
-        Settings = groq_stt.GroqSTTService.Settings
-
-        def __init__(self, *, api_key: str, settings: Any, **kwargs: Any) -> None:
-            built["api_key"] = api_key
-            built["settings"] = settings
-
-    monkeypatch.setattr(groq_stt, "GroqSTTService", RecordingGroq)
-    pipeline.make_stt(
-        make_settings(stt_provider="groq", groq_api_key="fake-key", groq_stt_model="m-1")
+    stt = pipeline.make_stt(
+        make_settings(stt_provider="groq", groq_api_key="g", elevenlabs_api_key="e")
     )
 
-    assert built["api_key"] == "fake-key"
-    assert built["settings"].model == "m-1"
+    assert isinstance(stt, FallbackGroqSTTService)
+    assert isinstance(stt._fallback, ElevenLabsTranscriber)
 
 
-def test_groq_stt_builds_without_network() -> None:
-    from pipecat.services.groq.stt import GroqSTTService
+def test_groq_stt_without_elevenlabs_key_has_no_fallback() -> None:
+    stt = pipeline.make_stt(
+        make_settings(stt_provider="groq", groq_api_key="g", elevenlabs_api_key="")
+    )
 
-    stt = pipeline.make_stt(make_settings(stt_provider="groq", groq_api_key="fake-key"))
-
-    assert isinstance(stt, GroqSTTService)
+    assert stt._fallback is None  # type: ignore[attr-defined]
