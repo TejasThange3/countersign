@@ -205,8 +205,12 @@ async def _run_pipeline(
     )
     output.worker = worker
     if relay is not None:
-        relay.worker = worker
+        relay.sink = transport.output()
         core.result_listeners.append(relay.on_result)
+
+        @worker.event_handler("on_pipeline_started")
+        async def _on_started(_worker: Any, _frame: Any) -> None:
+            await relay.pipeline_started()
 
     @transport.event_handler("on_client_disconnected")
     async def _on_disconnected(_transport: Any, _client: Any) -> None:

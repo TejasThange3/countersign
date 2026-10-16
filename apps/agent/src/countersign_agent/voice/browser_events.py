@@ -17,7 +17,6 @@ import logging
 from typing import Any
 
 from pipecat.frames.frames import (
-    InputAudioRawFrame,
     InterruptionFrame,
     LLMFullResponseEndFrame,
     LLMFullResponseStartFrame,
@@ -48,16 +47,20 @@ def decision_event(result: ToolResult) -> dict[str, Any]:
 
 
 class BrowserEventRelay(BaseObserver):
-    def __init__(self, worker: Any = None) -> None:
+    def __init__(self, sink: Any = None) -> None:
         super().__init__()
-        # The pipeline worker takes its observers when it is built, so it is attached after.
-        self.worker = worker
+        # Where messages go: the transport's output processor (attached once built), so they
+        # skip the STT, LLM and TTS processors on the way out.
+        self.sink = sink
         self._reply: list[str] | None = None
-        self._ready = False
+
+    async def pipeline_started(self) -> None:
+        """Opening the call (the ArmorIQ session) takes seconds; now the agent listens."""
+        await self.send({"type": "ready"})
 
     async def send(self, event: dict[str, Any]) -> None:
-        if self.worker is not None:
-            await self.worker.queue_frame(OutputTransportMessageUrgentFrame(message=event))
+        if self.sink is not None:
+            await self.sink.queue_frame(OutputTransportMessageUrgentFrame(message=event))
 
     async def on_result(self, result: ToolResult) -> None:
         await self.send(decision_event(result))
@@ -71,13 +74,7 @@ class BrowserEventRelay(BaseObserver):
         if not data.first_push or data.direction is not FrameDirection.DOWNSTREAM:
             return
         frame = data.frame
-        if isinstance(frame, InputAudioRawFrame):
-            # The first caller audio through the pipeline proves the line is live. (A message
-            # queued as the pipeline starts is lost: the socket output isn't writing yet.)
-            if not self._ready:
-                self._ready = True
-                await self.send({"type": "ready"})
-        elif isinstance(frame, TranscriptionFrame) and frame.text.strip():
+        if isinstance(frame, TranscriptionFrame) and frame.text.strip():
             await self.send({"type": "caller", "text": frame.text.strip()})
         elif isinstance(frame, LLMFullResponseStartFrame):
             self._reply = []

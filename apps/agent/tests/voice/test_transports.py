@@ -32,3 +32,10 @@ async def test_pipecat_rtvi_messages_are_not_forwarded() -> None:
         message={"label": "rtvi-ai", "type": "bot-tts-text", "data": {"text": "hi"}}
     )
     assert await BrowserSerializer().serialize(rtvi) is None
+
+
+async def test_every_website_event_type_is_forwarded() -> None:
+    # A missing entry silently dropped every 'ready' event once.
+    for kind in ("call", "ready", "caller", "agent", "interrupt", "decision", "held", "settled"):
+        frame = OutputTransportMessageUrgentFrame(message={"type": kind})
+        assert await BrowserSerializer().serialize(frame) is not None, kind

@@ -42,7 +42,9 @@ class RawPCMSerializer(FrameSerializer):
 
 # The website's event types (voice/browser_events.py). Pipecat's own RTVI client messages
 # use the same frame type (one per spoken word); the website does not speak RTVI.
-BROWSER_EVENTS = frozenset({"call", "caller", "agent", "interrupt", "decision", "held", "settled"})
+BROWSER_EVENTS = frozenset(
+    {"call", "ready", "caller", "agent", "interrupt", "decision", "held", "settled"}
+)
 
 
 class BrowserSerializer(RawPCMSerializer):
