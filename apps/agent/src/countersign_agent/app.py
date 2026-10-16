@@ -8,6 +8,7 @@ Endpoints:
 - POST /text/calls                   open a text-mode call (no STT/TTS, no ElevenLabs credits)
 - POST /text/calls/{id}/turns        send one caller turn, get the agent's reply
 - POST /text/calls/{id}/collect      fetch output that arrived later (a hold outcome)
+- POST /text/calls/{id}/decision     demo only: the caller, as manager, decides their own hold
 - DELETE /text/calls/{id}            hang up (cancels pending holds)
 
 Run: `uv run --project apps/agent uvicorn countersign_agent.app:app --port 7860`
@@ -18,10 +19,11 @@ from __future__ import annotations
 import asyncio
 import importlib
 import logging
+import os
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.responses import RedirectResponse
@@ -34,6 +36,7 @@ from pipecat.transports.smallwebrtc.request_handler import (
 )
 from pydantic import BaseModel, Field
 
+from countersign_agent.bridge.manager_desk import ArmorIQManagerDesk, ManagerDesk
 from countersign_agent.contracts import GatewayFactory
 from countersign_agent.voice.config import AgentSettings
 from countersign_agent.voice.fake_gateway import FakeGatewayFactory
@@ -82,14 +85,42 @@ class CollectRequest(BaseModel):
     wait_for_holds: bool = True
 
 
+class HoldDecision(BaseModel):
+    decision: Literal["approve", "reject"]
+    # Which held tool, when more than one is waiting; otherwise the only one.
+    tool: str | None = None
+
+
+class HoldDecided(BaseModel):
+    tool: str
+    decision: Literal["approve", "reject"]
+    armoriq_status: int
+
+
+def default_manager_desk(settings: AgentSettings) -> ManagerDesk | None:
+    """The demo desk only when DEMO_MANAGER_APPROVALS is on (see AgentSettings)."""
+    if not settings.demo_manager_approvals:
+        return None
+    from countersign_agent.bridge.settings import BridgeSettings
+
+    bridge = BridgeSettings()
+    return ArmorIQManagerDesk(
+        bridge.armoriq_api_key.get_secret_value(),
+        bridge.armoriq_admin_email,
+        os.environ.get("ARMORIQ_BACKEND_ENDPOINT", "https://api.armoriq.ai"),
+    )
+
+
 def create_app(
     settings: AgentSettings | None = None,
     factory: GatewayFactory | None = None,
     *,
     llm_factory: LLMFactory = make_llm,
+    manager_desk: ManagerDesk | None = None,
 ) -> FastAPI:
     settings = settings or AgentSettings()
     gateway_factory = factory or load_factory(settings.gateway_factory)
+    desk = manager_desk or default_manager_desk(settings)
     text_calls: dict[str, TextSession] = {}
     webrtc_sessions: set[str] = set()
     audio_tasks: set[asyncio.Task[None]] = set()
@@ -215,6 +246,23 @@ def create_app(
             return await session.collect(wait_for_holds=body.wait_for_holds if body else True)
         except TimeoutError as exc:
             raise HTTPException(status_code=504, detail="the agent did not finish in time") from exc
+
+    @app.post("/text/calls/{call_id}/decision")
+    async def decide_hold(call_id: str, body: HoldDecision) -> HoldDecided:
+        if desk is None:
+            raise HTTPException(status_code=403, detail="manager decisions are not enabled")
+        session = text_call(call_id)
+        # Only this call's own held requests: the delegation id never comes from the browser.
+        held = [h for h in session.core.router.held_requests if body.tool in (None, h.tool)]
+        if not held:
+            raise HTTPException(status_code=409, detail="nothing is waiting for a manager")
+        result = await desk.decide(held[0], body.decision)
+        if not result.ok:
+            logger.warning("ArmorIQ refused the demo %s: %s", body.decision, result.body)
+            raise HTTPException(status_code=502, detail="ArmorIQ did not accept the decision")
+        return HoldDecided(
+            tool=held[0].tool, decision=body.decision, armoriq_status=result.status_code
+        )
 
     @app.delete("/text/calls/{call_id}", status_code=204)
     async def hang_up(call_id: str) -> None:

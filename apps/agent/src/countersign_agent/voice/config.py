@@ -141,3 +141,9 @@ class AgentSettings(BaseSettings):
     # Loopback by default; a deployment that must listen publicly sets AGENT_HOST explicitly.
     agent_host: str = "127.0.0.1"
     agent_port: int = 7860
+    # Browser origins allowed to call this API (the website), comma-separated. Empty: none.
+    cors_origins: str = ""
+    # Demo only: lets the person on a call act as the hotel manager for that call's own held
+    # request (POST /text/calls/{id}/decision), sent to ArmorIQ's real approval API as
+    # ARMORIQ_ADMIN_EMAIL. Off unless set; in production a human decides in the ArmorIQ console.
+    demo_manager_approvals: bool = False
