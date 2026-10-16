@@ -420,3 +420,29 @@ async def test_router_lists_a_held_request_until_it_is_decided() -> None:
     gateway.release()
     await router.wait_for_holds()
     assert router.held_requests == []
+
+
+async def test_core_tells_result_listeners_and_survives_a_broken_one() -> None:
+    from countersign_agent.voice.session import CallCore, PipelineCallOutput
+
+    seen: list[str] = []
+
+    async def broken(_result: ToolResult) -> None:
+        raise RuntimeError("display down")
+
+    async def listener(result: ToolResult) -> None:
+        seen.append(f"{result.tool}:{result.decision}")
+
+    core = CallCore(
+        "c1",
+        FakeGateway("c1"),
+        make_settings(),
+        PipelineCallOutput(),
+        llm_factory=lambda _s: FakeScriptedLLM(hotel_script),
+    )
+    core.result_listeners += [broken, listener]
+    result = await FakeGateway("c1").call("check_availability", {})
+    await core._record_result(result)
+
+    assert seen == ["check_availability:allow"]
+    assert core.tool_results == [result]

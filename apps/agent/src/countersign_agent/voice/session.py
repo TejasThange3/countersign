@@ -6,7 +6,8 @@ as a real phone call; only the transport and the STT/TTS services differ.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import logging
+from collections.abc import Awaitable, Callable
 from datetime import date
 from typing import Any
 
@@ -28,6 +29,8 @@ from countersign_agent.voice.llm import FallbackGoogleLLMService, FallbackGroqLL
 from countersign_agent.voice.metrics import TurnMetricsRecorder
 from countersign_agent.voice.prompts import system_prompt
 from countersign_agent.voice.tools import build_tools_schema
+
+logger = logging.getLogger(__name__)
 
 LLMFactory = Callable[[AgentSettings], LLMService]
 
@@ -163,6 +166,8 @@ class CallCore:
         self.gateway = gateway
         self.output = output
         self.tool_results: list[ToolResult] = []
+        # Notified of every ArmorIQ result as it happens (the browser's live decision log).
+        self.result_listeners: list[Callable[[ToolResult], Awaitable[None]]] = []
         self.metrics = TurnMetricsRecorder(call_id, turns_from_speech=user_params is not None)
         self.router = ToolRouter(
             gateway,
@@ -190,3 +195,9 @@ class CallCore:
 
     async def _record_result(self, result: ToolResult) -> None:
         self.tool_results.append(result)
+        for listener in self.result_listeners:
+            try:
+                await listener(result)
+            except Exception:
+                # A broken display must never break the call.
+                logger.exception("result listener failed for %s", result.tool)
