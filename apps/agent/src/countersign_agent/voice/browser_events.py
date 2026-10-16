@@ -46,13 +46,15 @@ def decision_event(result: ToolResult) -> dict[str, Any]:
 
 
 class BrowserEventRelay(BaseObserver):
-    def __init__(self, worker: Any) -> None:
+    def __init__(self, worker: Any = None) -> None:
         super().__init__()
-        self._worker = worker
+        # The pipeline worker takes its observers when it is built, so it is attached after.
+        self.worker = worker
         self._reply: list[str] | None = None
 
     async def send(self, event: dict[str, Any]) -> None:
-        await self._worker.queue_frame(OutputTransportMessageUrgentFrame(message=event))
+        if self.worker is not None:
+            await self.worker.queue_frame(OutputTransportMessageUrgentFrame(message=event))
 
     async def on_result(self, result: ToolResult) -> None:
         await self.send(decision_event(result))

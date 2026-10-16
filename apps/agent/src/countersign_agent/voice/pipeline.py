@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from pipecat.frames.frames import OutputAudioRawFrame
@@ -26,6 +27,7 @@ from pipecat.transports.base_transport import BaseTransport
 from pipecat.workers.runner import WorkerRunner
 
 from countersign_agent.contracts import GatewayFactory
+from countersign_agent.voice.browser_events import BrowserEventRelay
 from countersign_agent.voice.config import AgentSettings
 from countersign_agent.voice.filler import SAMPLE_RATE, hold_music, load_filler
 from countersign_agent.voice.recording import InboundAudioRecorder
@@ -121,8 +123,16 @@ async def run_audio_call(
     settings: AgentSettings,
     *,
     stt: STTService | None = None,
+    browser_events: bool = False,
+    on_core: Callable[[CallCore | None], None] | None = None,
+    max_duration_s: float | None = None,
 ) -> None:
-    """Run one call until the caller hangs up. Always closes the gateway."""
+    """Run one call until the caller hangs up. Always closes the gateway.
+
+    `browser_events` sends the website's live events on the transport (see browser_events);
+    `on_core` is told the call's core when it exists and None when the call ends;
+    `max_duration_s` hangs up a call that runs longer (public demo: TTS costs credits).
+    """
     filler = await _hold_filler(settings)
     gateway = await factory.open_call(call_id)
     core: CallCore | None = None
@@ -135,8 +145,14 @@ async def run_audio_call(
             output,
             user_params=LLMUserAggregatorParams(vad_analyzer=make_vad(settings)),
         )
-        await _run_pipeline(call_id, transport, core, output, settings, stt)
+        if on_core is not None:
+            on_core(core)
+        await _run_pipeline(
+            call_id, transport, core, output, settings, stt, browser_events, max_duration_s
+        )
     finally:
+        if on_core is not None:
+            on_core(None)
         if core is not None:
             await core.close()
             turns = [t.model_dump() for t in core.metrics.turns]
@@ -152,6 +168,8 @@ async def _run_pipeline(
     output: AudioCallOutput,
     settings: AgentSettings,
     stt: STTService | None,
+    browser_events: bool = False,
+    max_duration_s: float | None = None,
 ) -> None:
     if stt is None:
         # Building Whisper loads (and on first use downloads) the model synchronously. Off the
@@ -176,15 +194,19 @@ async def _run_pipeline(
     async def _on_latency(_observer: Any, seconds: float) -> None:
         core.metrics.record_user_to_bot(seconds)
 
+    relay = BrowserEventRelay() if browser_events else None
     worker = PipelineWorker(
         pipeline,
         params=PipelineParams(
             audio_out_sample_rate=SAMPLE_RATE, enable_metrics=True, enable_usage_metrics=True
         ),
-        observers=[core.metrics, latency],
+        observers=[core.metrics, latency, *([relay] if relay else [])],
         idle_timeout_secs=300,
     )
     output.worker = worker
+    if relay is not None:
+        relay.worker = worker
+        core.result_listeners.append(relay.on_result)
 
     @transport.event_handler("on_client_disconnected")
     async def _on_disconnected(_transport: Any, _client: Any) -> None:
@@ -193,10 +215,19 @@ async def _run_pipeline(
         await core.router.close()
         await worker.cancel(reason="caller hung up")
 
+    async def _time_limit(seconds: float) -> None:
+        await asyncio.sleep(seconds)
+        logger.info("call %s: time limit reached; hanging up", call_id)
+        await core.router.close()
+        await worker.cancel(reason="time limit")
+
+    limit = asyncio.create_task(_time_limit(max_duration_s)) if max_duration_s else None
     runner = WorkerRunner(handle_sigint=False)
     await runner.add_workers(worker)
     try:
         await runner.run()
     finally:
+        if limit is not None:
+            limit.cancel()
         if recorder is not None and settings.debug_record_dir is not None:
             await recorder.save(settings.debug_record_dir / f"{call_id}.wav")
