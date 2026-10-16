@@ -12,6 +12,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 ENV UV_COMPILE_BYTECODE=1 \
+    UV_NO_CACHE=1 \
     UV_LINK_MODE=copy \
     UV_HTTP_TIMEOUT=300 \
     UV_PROJECT_ENVIRONMENT=/app/.venv \
@@ -23,12 +24,13 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 WORKDIR /app
 
-# Dependencies first so code changes don't re-download them.
+# Dependencies first so code changes don't re-download them. (No BuildKit cache mounts:
+# Railway rejects them without a Railway-specific id.)
 COPY pyproject.toml uv.lock README.md ./
-RUN --mount=type=cache,target=/root/.cache/uv uv sync --locked --no-dev --no-install-project
+RUN uv sync --locked --no-dev --no-install-project
 
 COPY src ./src
-RUN --mount=type=cache,target=/root/.cache/uv uv sync --locked --no-dev
+RUN uv sync --locked --no-dev
 
 RUN useradd --create-home --uid 1000 app
 USER app
