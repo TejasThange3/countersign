@@ -80,5 +80,6 @@ export const agent = {
       { method: "POST", body: JSON.stringify({ decision }) },
     ),
 
-  hangUp: (callId: string) => call<void>(`/text/calls/${callId}`, { method: "DELETE" }),
+  hangUp: (callId: string, init?: RequestInit) =>
+    call<void>(`/text/calls/${callId}`, { ...init, method: "DELETE" }),
 };
