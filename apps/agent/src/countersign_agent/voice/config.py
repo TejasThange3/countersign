@@ -76,9 +76,10 @@ class AgentSettings(BaseSettings):
     stt_provider: Literal["whisper", "groq", "elevenlabs"] = "whisper"
     # Groq's hosted Whisper; turbo is the fast, cheap one and handles English well.
     groq_stt_model: str = "whisper-large-v3-turbo"
-    # Format hint for Groq Whisper. Measured on synthesized clips: it writes "LRK-1001"
-    # instead of "LRK1001" and changed nothing else. Set GROQ_STT_PROMPT= (empty) to disable.
-    groq_stt_prompt: str = "Hotel front desk call. Booking references look like LRK-1001."
+    # Optional format hint for Groq Whisper. OFF by default: on clean clips it only changed
+    # "LRK1001" to "LRK-1001", but in a live voice call Whisper returned the hint itself as
+    # the transcript ("Booking references look like LRK-1001.") for a question about rooms.
+    groq_stt_prompt: str = ""
     # With STT_PROVIDER=groq: send an utterance to ElevenLabs Scribe when Groq fails or
     # rate-limits, then skip Groq for the cooldown. Costs ElevenLabs credits only when used.
     stt_fallback_elevenlabs: bool = True
