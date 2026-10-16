@@ -115,10 +115,24 @@ class AgentSettings(BaseSettings):
     vad_stop_secs: float = Field(default=0.5, gt=0)
 
     hold_timeout_s: float = Field(default=60.0, gt=0)
+    # What the caller hears while a manager decides, after the one spoken announcement:
+    # generated music (looped), silence, or voice (the cached spoken line every interval).
+    # A live caller found the spoken line repeating every few seconds grating.
+    hold_audio: Literal["music", "silence", "voice"] = "music"
     hold_filler_interval_s: float = Field(default=6.0, gt=0)
+    # Music starts once the hold announcement has been spoken (about 4 s including TTS).
+    hold_music_start_s: float = Field(default=4.5, ge=0)
     # Spoken filler is synthesized once and cached here (outside the repo, keyed by voice and
     # model); without an ElevenLabs key a generated hold tone is played instead.
     hold_filler_cache_dir: Path = Path.home() / ".cache" / "countersign"
+
+    def hold_filler_timing(self) -> tuple[float, float]:
+        """(first filler after, then every) seconds for the hold filler loop."""
+        if self.hold_audio == "music":
+            from countersign_agent.voice.filler import MUSIC_CHUNK_S
+
+            return self.hold_music_start_s, MUSIC_CHUNK_S
+        return self.hold_filler_interval_s, self.hold_filler_interval_s
 
     def hold_filler_cache(self) -> Path:
         name = f"hold_filler_{self.elevenlabs_voice_id}_{self.elevenlabs_tts_model}.pcm"

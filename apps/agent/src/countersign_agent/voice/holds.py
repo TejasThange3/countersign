@@ -107,6 +107,7 @@ class ToolRouter:
         *,
         hold_timeout_s: float,
         filler_interval_s: float,
+        filler_start_s: float | None = None,
         on_result: ResultListener | None = None,
         wait_grace_s: float = WAIT_GRACE_S,
     ) -> None:
@@ -114,6 +115,7 @@ class ToolRouter:
         self._output = output
         self._hold_timeout_s = hold_timeout_s
         self._filler_interval_s = filler_interval_s
+        self._filler_start_s = filler_interval_s if filler_start_s is None else filler_start_s
         self._on_result = on_result
         # Tool name -> the background task waiting on that tool's held call.
         self._pending: dict[str, asyncio.Task[None]] = {}
@@ -260,9 +262,10 @@ class ToolRouter:
             return _refused(held, "hold_wait_error")
 
     async def _filler_loop(self) -> None:
+        await asyncio.sleep(self._filler_start_s)
         while True:
-            await asyncio.sleep(self._filler_interval_s)
             await self._output.play_filler()
+            await asyncio.sleep(self._filler_interval_s)
 
     async def _notify(self, result: ToolResult) -> None:
         if self._on_result is not None:

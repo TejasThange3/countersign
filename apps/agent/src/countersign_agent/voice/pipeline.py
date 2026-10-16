@@ -27,7 +27,7 @@ from pipecat.workers.runner import WorkerRunner
 
 from countersign_agent.contracts import GatewayFactory
 from countersign_agent.voice.config import AgentSettings
-from countersign_agent.voice.filler import SAMPLE_RATE, load_filler
+from countersign_agent.voice.filler import SAMPLE_RATE, hold_music, load_filler
 from countersign_agent.voice.recording import InboundAudioRecorder
 from countersign_agent.voice.session import CallCore, PipelineCallOutput
 from countersign_agent.voice.vad import make_vad
@@ -38,15 +38,35 @@ logger = logging.getLogger(__name__)
 class AudioCallOutput(PipelineCallOutput):
     """Speaks through TTS and plays the cached filler audio straight to the transport."""
 
-    def __init__(self, filler: bytes) -> None:
+    def __init__(self, filler: list[bytes]) -> None:
         super().__init__()
+        # Played in order, one piece per call, looping: the spoken line, or one second of
+        # music. Empty means silence.
         self._filler = filler
+        self._next = 0
 
     async def play_filler(self) -> None:
-        if self.worker is not None:
-            await self.worker.queue_frame(
-                OutputAudioRawFrame(audio=self._filler, sample_rate=SAMPLE_RATE, num_channels=1)
-            )
+        if self.worker is None or not self._filler:
+            return
+        audio = self._filler[self._next % len(self._filler)]
+        self._next += 1
+        await self.worker.queue_frame(
+            OutputAudioRawFrame(audio=audio, sample_rate=SAMPLE_RATE, num_channels=1)
+        )
+
+
+async def _hold_filler(settings: AgentSettings) -> list[bytes]:
+    if settings.hold_audio == "music":
+        return await asyncio.to_thread(hold_music)
+    if settings.hold_audio == "silence":
+        return []
+    spoken = await load_filler(
+        settings.hold_filler_cache(),
+        api_key=settings.elevenlabs_api_key,
+        voice_id=settings.elevenlabs_voice_id,
+        model_id=settings.elevenlabs_tts_model,
+    )
+    return [spoken]
 
 
 def make_stt(settings: AgentSettings) -> STTService:
@@ -103,12 +123,7 @@ async def run_audio_call(
     stt: STTService | None = None,
 ) -> None:
     """Run one call until the caller hangs up. Always closes the gateway."""
-    filler = await load_filler(
-        settings.hold_filler_cache(),
-        api_key=settings.elevenlabs_api_key,
-        voice_id=settings.elevenlabs_voice_id,
-        model_id=settings.elevenlabs_tts_model,
-    )
+    filler = await _hold_filler(settings)
     gateway = await factory.open_call(call_id)
     core: CallCore | None = None
     try:

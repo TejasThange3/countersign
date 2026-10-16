@@ -167,7 +167,8 @@ class CallCore:
             gateway,
             output,
             hold_timeout_s=settings.hold_timeout_s,
-            filler_interval_s=settings.hold_filler_interval_s,
+            filler_start_s=settings.hold_filler_timing()[0],
+            filler_interval_s=settings.hold_filler_timing()[1],
             on_result=self._record_result,
         )
         self.llm = llm_factory(settings)

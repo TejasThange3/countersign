@@ -123,6 +123,7 @@ def make_settings(**overrides: Any) -> AgentSettings:
         "elevenlabs_api_key": "",
         "hold_timeout_s": 5.0,
         "hold_filler_interval_s": 0.05,
+        "hold_audio": "voice",  # tests time the filler loop by hold_filler_interval_s
     }
     base.update(overrides)
     return AgentSettings(_env_file=None, **base)  # type: ignore[call-arg]  # pydantic-settings init kwarg
