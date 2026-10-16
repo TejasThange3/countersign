@@ -94,3 +94,15 @@ async def test_allowed_call_is_just_a_decision() -> None:
     worker = Worker()
     await BrowserEventRelay(worker).on_result(result(Outcome.RAN, Decision.ALLOW))
     assert [e["type"] for e in worker.events] == ["decision"]
+
+
+async def test_ready_once_caller_audio_flows() -> None:
+    from pipecat.frames.frames import InputAudioRawFrame
+
+    worker = Worker()
+    relay = BrowserEventRelay(worker)
+    for _ in range(3):
+        await relay.on_push_frame(
+            pushed(InputAudioRawFrame(audio=b"\x00\x00", sample_rate=16_000, num_channels=1))
+        )
+    assert worker.events == [{"type": "ready"}]

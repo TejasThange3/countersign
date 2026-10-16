@@ -1,5 +1,6 @@
 """Live events for the website's voice call, sent as JSON text on the call's WebSocket.
 
+    {"type": "ready"}                  the call is listening (the ArmorIQ session is open)
     {"type": "caller", "text": ...}    what the caller said (final transcript)
     {"type": "agent", "text": ...}     what the agent said (one LLM reply, or a fixed line)
     {"type": "interrupt"}              the caller talked over the agent: drop queued audio
@@ -16,6 +17,7 @@ import logging
 from typing import Any
 
 from pipecat.frames.frames import (
+    InputAudioRawFrame,
     InterruptionFrame,
     LLMFullResponseEndFrame,
     LLMFullResponseStartFrame,
@@ -51,6 +53,7 @@ class BrowserEventRelay(BaseObserver):
         # The pipeline worker takes its observers when it is built, so it is attached after.
         self.worker = worker
         self._reply: list[str] | None = None
+        self._ready = False
 
     async def send(self, event: dict[str, Any]) -> None:
         if self.worker is not None:
@@ -68,7 +71,13 @@ class BrowserEventRelay(BaseObserver):
         if not data.first_push or data.direction is not FrameDirection.DOWNSTREAM:
             return
         frame = data.frame
-        if isinstance(frame, TranscriptionFrame) and frame.text.strip():
+        if isinstance(frame, InputAudioRawFrame):
+            # The first caller audio through the pipeline proves the line is live. (A message
+            # queued as the pipeline starts is lost: the socket output isn't writing yet.)
+            if not self._ready:
+                self._ready = True
+                await self.send({"type": "ready"})
+        elif isinstance(frame, TranscriptionFrame) and frame.text.strip():
             await self.send({"type": "caller", "text": frame.text.strip()})
         elif isinstance(frame, LLMFullResponseStartFrame):
             self._reply = []
