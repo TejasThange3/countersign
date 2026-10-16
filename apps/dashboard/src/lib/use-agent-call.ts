@@ -8,6 +8,7 @@ export type Logged = ToolResult & { id: number; at: number };
 
 export type CallStatus =
   | "idle" // no call yet
+  | "connecting" // opening the call (the bridge starts an ArmorIQ session, ~10 s)
   | "thinking" // a turn is in flight
   | "held" // a request is waiting for the manager
   | "deciding" // the manager's decision is on its way to ArmorIQ
@@ -22,10 +23,11 @@ export type CallStatus =
 export function useAgentCall() {
   const [lines, setLines] = useState<Line[]>([]);
   const [log, setLog] = useState<Logged[]>([]);
-  const [status, setStatus] = useState<CallStatus>("idle");
+  const [status, setStatus] = useState<CallStatus>("connecting");
   const [held, setHeld] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const callId = useRef<string | null>(null);
+  const opening = useRef<Promise<string> | null>(null);
   const nextId = useRef(0);
 
   const push = useCallback((who: Line["who"], texts: string[]) => {
@@ -49,6 +51,31 @@ export function useAgentCall() {
     setStatus("error");
   }, []);
 
+  /** The open call, opening one if needed; concurrent callers share one request. */
+  const ensureCall = useCallback(async () => {
+    if (callId.current) return callId.current;
+    opening.current ??= agent.open().then(({ call_id }) => {
+      callId.current = call_id;
+      return call_id;
+    });
+    try {
+      return await opening.current;
+    } finally {
+      opening.current = null;
+    }
+  }, []);
+
+  /** Open the call ahead of the first message, so the ArmorIQ session is ready by then. */
+  const connect = useCallback(async () => {
+    setStatus("connecting");
+    try {
+      await ensureCall();
+      setStatus("ready");
+    } catch (e) {
+      fail(e);
+    }
+  }, [ensureCall, fail]);
+
   const awaitOutcome = useCallback(
     async (id: string) => {
       try {
@@ -68,12 +95,12 @@ export function useAgentCall() {
     async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed || status === "thinking" || status === "held" || status === "deciding") return;
+      if (status === "connecting") return;
       setError(null);
       push("caller", [trimmed]);
       setStatus("thinking");
       try {
-        if (!callId.current) callId.current = (await agent.open()).call_id;
-        const id = callId.current;
+        const id = await ensureCall();
         const reply = await agent.say(id, trimmed);
         push("agent", reply.messages);
         record(reply.tool_results);
@@ -88,7 +115,7 @@ export function useAgentCall() {
         fail(e);
       }
     },
-    [status, push, record, fail, awaitOutcome],
+    [status, push, record, fail, awaitOutcome, ensureCall],
   );
 
   const decide = useCallback(
@@ -119,8 +146,19 @@ export function useAgentCall() {
     setLog([]);
     setHeld(null);
     setError(null);
-    setStatus("idle");
-  }, []);
+    void connect();
+  }, [connect]);
+
+  // Open the call as the page loads (status starts at "connecting").
+  useEffect(() => {
+    let live = true;
+    ensureCall()
+      .then(() => live && setStatus((s) => (s === "connecting" ? "ready" : s)))
+      .catch((e: unknown) => live && fail(e));
+    return () => {
+      live = false;
+    };
+  }, [ensureCall, fail]);
 
   // Hang up when the visitor leaves, so held requests are cancelled server-side.
   useEffect(() => {

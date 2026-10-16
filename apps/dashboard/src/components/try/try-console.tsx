@@ -11,7 +11,8 @@ import { useAgentCall } from "@/lib/use-agent-call";
 /** The live demo: a text call with the deployed agent, governed by ArmorIQ end to end. */
 export function TryConsole() {
   const { lines, log, status, held, error, send, decide, reset } = useAgentCall();
-  const busy = status === "thinking" || status === "held" || status === "deciding";
+  const busy =
+    status === "thinking" || status === "held" || status === "deciding" || status === "connecting";
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[20rem_minmax(0,1fr)_22rem] lg:gap-5">
@@ -23,14 +24,20 @@ export function TryConsole() {
       <Frame className="order-1 flex flex-col overflow-hidden lg:order-2 lg:h-[calc(100dvh-10rem)] lg:min-h-[36rem]">
         <div className="flex items-center justify-between border-b border-line px-5 py-3 md:px-7">
           <div className="flex items-center gap-2.5">
-            <span className={`h-2 w-2 rounded-full ${status === "idle" ? "bg-dim" : "bg-allow"}`} />
+            <span
+              className={`h-2 w-2 rounded-full ${
+                status === "connecting" ? "animate-pulse bg-hold" : status === "error" ? "bg-block" : "bg-allow"
+              }`}
+            />
             <span className="text-sm text-text">The Larkspur, front desk</span>
-            <span className="font-mono text-[11px] text-dim">text call</span>
+            <span className="font-mono text-[11px] text-dim">
+              {status === "connecting" ? "connecting to ArmorIQ…" : "text call"}
+            </span>
           </div>
           <button
             type="button"
             onClick={reset}
-            disabled={status === "idle"}
+            disabled={status === "connecting"}
             className="inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] text-muted transition-colors hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
           >
             <ArrowCounterClockwise size={14} />

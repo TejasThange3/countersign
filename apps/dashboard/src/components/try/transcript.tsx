@@ -7,6 +7,7 @@ import type { CallStatus, Line } from "@/lib/use-agent-call";
 
 const PLACEHOLDER: Record<CallStatus, string> = {
   idle: "Say something to the front desk…",
+  connecting: "Connecting to the front desk…",
   thinking: "The agent is replying…",
   held: "Waiting for the manager's decision…",
   deciding: "Sending your decision to ArmorIQ…",
@@ -26,7 +27,8 @@ export function Transcript({
   const [draft, setDraft] = useState("");
   const end = useRef<HTMLDivElement>(null);
   const reduce = useReducedMotion();
-  const busy = status === "thinking" || status === "held" || status === "deciding";
+  const busy =
+    status === "thinking" || status === "held" || status === "deciding" || status === "connecting";
 
   useEffect(() => {
     end.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "end" });
