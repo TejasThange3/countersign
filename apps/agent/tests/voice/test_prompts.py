@@ -33,3 +33,9 @@ def test_prompt_keeps_the_agent_on_topic() -> None:
     assert "do not answer it, not even partly" in text
     assert "cannot look up bookings or guests by name alone" in text
     assert "rather than guessing" in text
+
+
+def test_prompt_says_how_to_handle_a_failed_verification() -> None:
+    text = system_prompt(date(2026, 10, 15))
+    assert "don't match our records" in text
+    assert "Never act on a booking the caller has not verified" in text
