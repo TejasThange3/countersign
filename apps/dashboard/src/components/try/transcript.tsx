@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { PaperPlaneRight } from "@phosphor-icons/react";
 import type { CallStatus, Line } from "@/lib/use-agent-call";
@@ -19,10 +19,15 @@ export function Transcript({
   lines,
   status,
   onSend,
+  footer,
+  empty,
 }: {
   lines: Line[];
   status: CallStatus;
   onSend: (text: string) => void;
+  /** Replaces the message box (the voice call's controls). */
+  footer?: ReactNode;
+  empty?: string;
 }) {
   const [draft, setDraft] = useState("");
   const end = useRef<HTMLDivElement>(null);
@@ -45,7 +50,8 @@ export function Transcript({
       <div className="flex-1 space-y-4 overflow-y-auto px-5 py-6 md:px-7" aria-live="polite">
         {lines.length === 0 && (
           <p className="mx-auto mt-16 max-w-[34ch] text-center text-[15px] leading-relaxed text-dim">
-            You&apos;re calling The Larkspur&apos;s front desk. Pick a step from the list, or type anything.
+            {empty ??
+              "You're calling The Larkspur's front desk. Pick a step from the list, or type anything."}
           </p>
         )}
         <AnimatePresence initial={false}>
@@ -91,6 +97,7 @@ export function Transcript({
         <div ref={end} />
       </div>
 
+      {footer ?? (
       <form
         className="flex items-center gap-2 border-t border-line p-3"
         onSubmit={(e) => {
@@ -120,6 +127,7 @@ export function Transcript({
           <PaperPlaneRight size={18} weight="fill" />
         </button>
       </form>
+      )}
     </div>
   );
 }
