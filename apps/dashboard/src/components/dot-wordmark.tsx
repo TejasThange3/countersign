@@ -27,6 +27,12 @@ export function DotWordmark({ text = "Countersign" }: { text?: string }) {
     const build = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const { width, height } = canvas.getBoundingClientRect();
+      // A zero-size canvas (hidden tab, mid-resize) has nothing to sample; getImageData
+      // throws on it. The resize observer builds again once it has a size.
+      if (width < 1 || height < 1) {
+        dots = [];
+        return;
+      }
       canvas.width = Math.floor(width * dpr);
       canvas.height = Math.floor(height * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
