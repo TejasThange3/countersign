@@ -80,6 +80,13 @@ export const agent = {
       { method: "POST", body: JSON.stringify({ decision }) },
     ),
 
+  /** Demo: decide a voice call's own held request (same rules as text calls). */
+  decideCall: (callId: string, decision: ManagerDecision) =>
+    call<{ tool: string; decision: ManagerDecision; armoriq_status: number }>(
+      `/calls/${callId}/decision`,
+      { method: "POST", body: JSON.stringify({ decision }) },
+    ),
+
   hangUp: (callId: string, init?: RequestInit) =>
     call<void>(`/text/calls/${callId}`, { ...init, method: "DELETE" }),
 };
