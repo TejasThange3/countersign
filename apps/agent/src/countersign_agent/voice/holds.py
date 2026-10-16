@@ -119,6 +119,8 @@ class ToolRouter:
         self._on_result = on_result
         # Tool name -> the background task waiting on that tool's held call.
         self._pending: dict[str, asyncio.Task[None]] = {}
+        # Tool name -> the held result (with its ArmorIQ delegation id) while it waits.
+        self._held: dict[str, ToolResult] = {}
         # Tool names whose gateway.call is running right now.
         self._in_flight: set[str] = set()
         # Tool name -> the task running an acting tool's call (it outlives a barge-in).
@@ -130,6 +132,11 @@ class ToolRouter:
     @property
     def pending_tools(self) -> list[str]:
         return list(self._pending)
+
+    @property
+    def held_requests(self) -> list[ToolResult]:
+        """Held calls still waiting for a manager, oldest first."""
+        return list(self._held.values())
 
     def has_pending_holds(self) -> bool:
         return bool(self._pending or self._acting)
@@ -200,6 +207,7 @@ class ToolRouter:
                 return
 
             task = asyncio.create_task(self._wait(name, result), name=f"hold:{name}")
+            self._held[name] = result
             self._pending[name] = task
         finally:
             self._in_flight.discard(name)
@@ -243,6 +251,7 @@ class ToolRouter:
             with contextlib.suppress(asyncio.CancelledError):
                 await filler
             self._pending.pop(name, None)
+            self._held.pop(name, None)
         await self._notify(final)
         if self._closed:
             # Hung up between the decision and delivery: nobody is left to tell.

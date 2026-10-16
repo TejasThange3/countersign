@@ -407,3 +407,16 @@ def test_spoken_hold_outcome_states_the_decision(
         armoriq_mode="live",
     )
     assert spoken_hold_outcome("issue_refund", result) == spoken
+
+
+async def test_router_lists_a_held_request_until_it_is_decided() -> None:
+    gateway = FakeGateway("c1", approval_delay_s=30)
+    output = RecordingOutput()
+    router = make_router(gateway, output)
+    await router.handle(FakeParams("issue_refund", REFUND_250, output.log))  # type: ignore[arg-type]
+
+    [held] = router.held_requests
+    assert held.tool == "issue_refund"
+    gateway.release()
+    await router.wait_for_holds()
+    assert router.held_requests == []
