@@ -19,6 +19,7 @@ Run: `uv run --project apps/agent uvicorn countersign_agent.app:app --port 7860`
 from __future__ import annotations
 
 import asyncio
+import functools
 import importlib
 import logging
 import os
@@ -87,6 +88,12 @@ class TextTurn(BaseModel):
 
 class TextCallOpened(BaseModel):
     call_id: str
+
+
+class TextCallOptions(BaseModel):
+    # The website's chat: the agent skips read-backs meant for misheard speech (prompts.py).
+    # Evals leave it off, since their text calls stand in for phone calls.
+    typed: bool = False
 
 
 class CollectRequest(BaseModel):
@@ -295,13 +302,17 @@ def create_app(
                     logger.exception("closing idle text call %s failed", call_id)
 
     @app.post("/text/calls", status_code=201)
-    async def open_text_call() -> TextCallOpened:
+    async def open_text_call(options: TextCallOptions | None = None) -> TextCallOpened:
         if len(text_calls) >= settings.max_text_calls:
             raise HTTPException(status_code=503, detail="every line is busy; try again soon")
         call_id = f"text-{uuid.uuid4().hex[:8]}"
         last_used[call_id] = time.monotonic()
+        typed = options is not None and options.typed and llm_factory is make_llm
         text_calls[call_id] = await TextSession.open(
-            call_id, gateway_factory, settings, llm_factory=llm_factory
+            call_id,
+            gateway_factory,
+            settings,
+            llm_factory=functools.partial(make_llm, typed=True) if typed else llm_factory,
         )
         return TextCallOpened(call_id=call_id)
 

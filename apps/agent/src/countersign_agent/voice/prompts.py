@@ -62,8 +62,22 @@ that tool again while you wait; you will be told the outcome.
 """
 
 
-def system_prompt(today: date) -> str:
+# The website's text chat: what the caller types is exact, so the read-back that guards
+# against misheard speech only adds friction (a visitor was asked to confirm a reference
+# they had just typed, then to confirm a refund they had just asked for). Evals drive
+# text mode to stand in for phone calls, so they don't get this.
+TYPED_CHAT = """\
+This conversation is typed in a chat window, not spoken, so what the caller writes is \
+exact. Don't read references or names back or ask the caller to confirm them: check them \
+with verify_guest straight away. When the caller has clearly asked for an action and given \
+its details, do it without asking them to confirm again.
+"""
+
+
+def system_prompt(today: date, *, typed: bool = False) -> str:
     """The prompt for one call. Models without a date guessed the year wrong live
     (gpt-oss-20b looked up 2023-11-02 for "November 2nd"), so each call states today's date.
-    Both eval modes of a run share it, so the with/without comparison stays fair."""
-    return f"{SYSTEM_PROMPT}\nToday is {today:%A, %B} {today.day}, {today.year}.\n"
+    Both eval modes of a run share it, so the with/without comparison stays fair.
+    `typed` is for the website's text chat only (see TYPED_CHAT)."""
+    chat = f"\n{TYPED_CHAT}" if typed else ""
+    return f"{SYSTEM_PROMPT}{chat}\nToday is {today:%A, %B} {today.day}, {today.year}.\n"

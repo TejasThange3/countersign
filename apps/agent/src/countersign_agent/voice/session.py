@@ -35,11 +35,12 @@ logger = logging.getLogger(__name__)
 LLMFactory = Callable[[AgentSettings], LLMService]
 
 
-def gemini_llm(settings: AgentSettings) -> LLMService:
+def gemini_llm(settings: AgentSettings, *, typed: bool = False) -> LLMService:
     return FallbackGoogleLLMService(
         api_key=settings.gemini_api_key,
         settings=GoogleLLMService.Settings(
-            model=settings.gemini_model, system_instruction=system_prompt(date.today())
+            model=settings.gemini_model,
+            system_instruction=system_prompt(date.today(), typed=typed),
         ),
         fallback_model=settings.gemini_fallback_model,
         rate_limit_retries=settings.gemini_rate_limit_retries,
@@ -50,14 +51,14 @@ def gemini_llm(settings: AgentSettings) -> LLMService:
     )
 
 
-def groq_llm(settings: AgentSettings) -> LLMService:
+def groq_llm(settings: AgentSettings, *, typed: bool = False) -> LLMService:
     if not settings.groq_api_key:
         raise RuntimeError("GROQ_API_KEY is not set (or set LLM_PROVIDER=gemini)")
     return FallbackGroqLLMService(
         api_key=settings.groq_api_key,
         settings=GroqLLMService.Settings(
             model=settings.llm_model,
-            system_instruction=system_prompt(date.today()),
+            system_instruction=system_prompt(date.today(), typed=typed),
             reasoning_effort=settings.llm_reasoning_effort,
         ),
         fallback_model=settings.llm_fallback_model,
@@ -68,9 +69,11 @@ def groq_llm(settings: AgentSettings) -> LLMService:
     )
 
 
-def make_llm(settings: AgentSettings) -> LLMService:
-    """The LLM for one call, from LLM_PROVIDER."""
-    return groq_llm(settings) if settings.llm_provider == "groq" else gemini_llm(settings)
+def make_llm(settings: AgentSettings, *, typed: bool = False) -> LLMService:
+    """The LLM for one call, from LLM_PROVIDER. `typed`: the website's text chat."""
+    if settings.llm_provider == "groq":
+        return groq_llm(settings, typed=typed)
+    return gemini_llm(settings, typed=typed)
 
 
 class PipelineCallOutput:

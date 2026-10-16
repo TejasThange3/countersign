@@ -287,3 +287,15 @@ def test_voice_calls_are_capped(monkeypatch: pytest.MonkeyPatch) -> None:
             assert first.receive_json()["type"] == "call"
             with client.websocket_connect("/voice") as second:
                 assert second.receive_json() == {"type": "busy"}
+
+
+def test_text_call_accepts_the_typed_option() -> None:
+    with TestClient(
+        create_app(
+            make_settings(),
+            FakeGatewayFactory(),
+            llm_factory=lambda _s: FakeScriptedLLM(hotel_script),
+        )
+    ) as client:
+        assert client.post("/text/calls", json={"typed": True}).status_code == 201
+        assert client.post("/text/calls").status_code == 201  # no body: evals, unchanged

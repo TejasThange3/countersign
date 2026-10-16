@@ -39,3 +39,12 @@ def test_prompt_says_how_to_handle_a_failed_verification() -> None:
     text = system_prompt(date(2026, 10, 15))
     assert "don't match our records" in text
     assert "Never act on a booking the caller has not verified" in text
+
+
+def test_typed_chat_skips_the_read_back_but_voice_and_evals_keep_it() -> None:
+    voice = system_prompt(date(2026, 10, 15))
+    typed = system_prompt(date(2026, 10, 15), typed=True)
+    assert "read the reference and name back" in voice
+    assert "typed in a chat window" not in voice
+    assert "typed in a chat window" in typed
+    assert "without asking them to confirm again" in typed
