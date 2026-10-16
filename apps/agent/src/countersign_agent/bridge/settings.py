@@ -7,13 +7,21 @@ from pathlib import Path
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# apps/agent/src/countersign_agent/bridge/settings.py -> repo root is five levels up.
-REPO_ROOT = Path(__file__).resolve().parents[5]
+
+def _find_env_file() -> Path | None:
+    """The nearest `.env` walking up from this file: the repo root locally and in every
+    worktree. In a container there is none (a fixed `parents[5]` crashed there) and the
+    host's environment variables are used instead."""
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / ".env"
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 class BridgeSettings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=REPO_ROOT / ".env", env_file_encoding="utf-8", extra="ignore"
+        env_file=_find_env_file(), env_file_encoding="utf-8", extra="ignore"
     )
 
     armoriq_api_key: SecretStr = SecretStr("")
