@@ -9,7 +9,7 @@ const STYLE: Record<DecisionKind, string> = {
 export function DecisionChip({ kind, label }: { kind: DecisionKind; label?: string }) {
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 font-mono text-[11px] font-medium uppercase tracking-wider ${STYLE[kind]}`}
+      className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-full border px-2.5 py-0.5 font-mono text-[11px] font-medium uppercase tracking-wider ${STYLE[kind]}`}
     >
       {label ?? kind}
     </span>
