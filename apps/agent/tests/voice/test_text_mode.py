@@ -56,7 +56,10 @@ async def test_allowed_call_routes_through_gateway(
 async def test_hold_then_approve_speaks_first_then_outcome(approve_session: TextSession) -> None:
     reply = await approve_session.send("Please refund 250 dollars")
     assert reply.messages[0] == HOLD_ANNOUNCEMENT
-    assert reply.messages[-1] == "Good news, the manager approved it and it's done."
+    assert (
+        reply.messages[-1]
+        == "Good news: the manager approved it, and your refund of 250 dollars has gone through."
+    )
     assert [r.outcome for r in reply.tool_results] == [Outcome.PENDING, Outcome.RAN]
     assert reply.filler_played > 0
     assert reply.pending_holds == []
@@ -70,7 +73,10 @@ async def test_hold_timeout_is_a_refusal(llm: FakeScriptedLLM) -> None:
     finally:
         await session.close()
     assert reply.messages[0] == HOLD_ANNOUNCEMENT
-    assert reply.messages[-1] == "I'm sorry, I couldn't reach a manager in time."
+    assert (
+        reply.messages[-1]
+        == "I'm sorry, I couldn't reach a manager in time, so nothing was changed."
+    )
     assert reply.tool_results[-1].outcome is Outcome.NOT_RUN
     assert reply.tool_results[-1].reason == "approval_timeout"
 
@@ -88,9 +94,9 @@ async def test_a_hold_decided_at_once_is_still_relayed(
     finally:
         await session.close()
     expected = (
-        "I'm sorry, the manager did not approve that."
+        "I'm sorry, the manager declined your refund, so nothing was changed."
         if resolution == "reject"
-        else "Good news, the manager approved it and it's done."
+        else "Good news: the manager approved it, and your refund of 250 dollars has gone through."
     )
     assert reply.messages[0] == HOLD_ANNOUNCEMENT
     assert reply.messages[-1] == expected
@@ -119,7 +125,9 @@ async def test_outcome_relayed_when_the_tool_call_came_with_text(delay: float) -
         reply = await session.send("Please refund 250 dollars")
     finally:
         await session.close()
-    assert reply.messages[-1] == "I'm sorry, the manager did not approve that."
+    assert (
+        reply.messages[-1] == "I'm sorry, the manager declined your refund, so nothing was changed."
+    )
 
 
 async def test_blocked_call_is_refused(approve_session: TextSession) -> None:

@@ -56,7 +56,9 @@ def test_hold_outcome_can_be_collected_later(client: TestClient) -> None:
 
     later = client.post(f"/text/calls/{call_id}/collect").json()
     assert later["pending_holds"] == []
-    assert later["messages"] == ["Good news, the manager approved it and it's done."]
+    assert later["messages"] == [
+        "Good news: the manager approved it, and your refund of 250 dollars has gone through."
+    ]
 
 
 def test_empty_turn_is_rejected(client: TestClient) -> None:

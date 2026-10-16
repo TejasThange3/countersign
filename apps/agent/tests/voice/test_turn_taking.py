@@ -15,6 +15,7 @@ from pipecat.frames.frames import (
     LLMMessagesAppendFrame,
     LLMRunFrame,
     TranscriptionFrame,
+    TTSSpeakFrame,
 )
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
@@ -84,11 +85,16 @@ async def wired() -> tuple[PipelineCallOutput, Any, RecordingWorker]:
     return output, aggregator, worker
 
 
-async def test_outcome_with_no_caller_speech_runs_at_once() -> None:
+async def test_outcome_with_no_caller_speech_is_spoken_verbatim_at_once() -> None:
+    # The decision is not worded by the LLM (it once said "pending" after an approval):
+    # the fixed sentence is recorded in the context as said, then spoken.
     output, _aggregator, worker = await wired()
     await output.deliver_hold_outcome("issue_refund", APPROVED)
-    [frame] = worker.frames
-    assert isinstance(frame, LLMMessagesAppendFrame) and frame.run_llm is True
+    append, speak = worker.frames
+    assert isinstance(append, LLMMessagesAppendFrame) and append.run_llm is False
+    assert isinstance(speak, TTSSpeakFrame)
+    assert speak.text.startswith("Good news: the manager approved it")
+    assert append.messages[-1] == {"role": "assistant", "content": speak.text}
 
 
 async def test_outcome_during_a_wordless_turn_runs_once_when_it_ends() -> None:

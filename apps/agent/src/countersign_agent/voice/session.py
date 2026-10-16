@@ -23,7 +23,7 @@ from pipecat.services.llm_service import LLMService
 
 from countersign_agent.contracts import ToolGateway, ToolResult
 from countersign_agent.voice.config import AgentSettings
-from countersign_agent.voice.holds import ToolRouter, hold_outcome_message
+from countersign_agent.voice.holds import ToolRouter, hold_outcome_message, spoken_hold_outcome
 from countersign_agent.voice.llm import FallbackGoogleLLMService, FallbackGroqLLMService
 from countersign_agent.voice.metrics import TurnMetricsRecorder
 from countersign_agent.voice.prompts import system_prompt
@@ -95,6 +95,14 @@ class PipelineCallOutput:
         self, tool: str, result: ToolResult, *, interrupted: bool = False
     ) -> None:
         message = hold_outcome_message(tool, result, interrupted=interrupted)
+        if self.speaks_outcome_directly(interrupted=interrupted):
+            # The decision is spoken word for word (see `spoken_hold_outcome`) and recorded
+            # in the context as said, so later turns build on the true outcome.
+            text = spoken_hold_outcome(tool, result)
+            said = {"role": "assistant", "content": text}
+            await self._queue(LLMMessagesAppendFrame(messages=[message, said], run_llm=False))
+            await self._queue(TTSSpeakFrame(text))
+            return
         if self.caller_speaking:
             # Several outcomes during one caller turn coalesce into one inference later.
             self._unspoken.append(message)
@@ -104,6 +112,11 @@ class PipelineCallOutput:
         # interrupts first and runs the turn handlers as tasks. Its interruption cancels
         # this reply too, so the window is harmless.)
         await self._queue(LLMMessagesAppendFrame(messages=[message], run_llm=True))
+
+    def speaks_outcome_directly(self, *, interrupted: bool) -> bool:
+        """A decided hold is spoken verbatim unless the caller is mid-turn (then the LLM
+        answers both at the end of the turn) or the call was interrupted mid-flight."""
+        return not interrupted and not self.caller_speaking
 
     def watch_caller_turns(self, user_aggregator: Any) -> None:
         """Follow the caller's turns from the user context aggregator's events."""

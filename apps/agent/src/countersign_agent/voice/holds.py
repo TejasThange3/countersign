@@ -289,6 +289,39 @@ def _refused(held: ToolResult, reason: str) -> ToolResult:
 _NO_ANSWER_REASONS = {"timeout", "approval_timeout", "hold_wait_overrun", "hold_wait_error"}
 
 
+_MONEY_NOUNS = {"issue_refund": "refund", "apply_comp_credit": "credit", "waive_fee": "fee waiver"}
+
+
+def _amount(result: ToolResult) -> float | None:
+    try:
+        value = json.loads(result.content).get("amount")
+    except (ValueError, AttributeError):
+        return None
+    return float(value) if isinstance(value, int | float) else None
+
+
+def spoken_hold_outcome(tool: str, result: ToolResult) -> str:
+    """The exact sentence the caller hears when a manager's decision arrives.
+
+    Fixed wording instead of an LLM reply: in a live call the model, told "APPROVED and
+    completed", still said the refund was pending. A decision about money is the one line
+    that must never be misreported, so it is not left to the model.
+    """
+    noun = _MONEY_NOUNS.get(tool, "request")
+    amount = _amount(result)
+    what = f"your {noun} of {amount:,.2f} dollars" if amount is not None else f"your {noun}"
+    what = what.replace(".00 dollars", " dollars")
+    if result.outcome is Outcome.RAN:
+        return f"Good news: the manager approved it, and {what} has gone through."
+    if result.outcome is Outcome.ERROR:
+        return "The manager approved it, but it didn't go through on our side, so nothing changed."
+    if result.reason == "rejected":
+        return f"I'm sorry, the manager declined {what}, so nothing was changed."
+    if result.reason in _NO_ANSWER_REASONS:
+        return "I'm sorry, I couldn't reach a manager in time, so nothing was changed."
+    return "I'm sorry, I couldn't complete that right now, so nothing was changed."
+
+
 def hold_outcome_message(
     tool: str, result: ToolResult, *, interrupted: bool = False
 ) -> dict[str, str]:

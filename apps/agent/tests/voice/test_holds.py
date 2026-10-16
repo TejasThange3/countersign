@@ -143,7 +143,9 @@ async def test_barge_in_during_hold_in_text_mode() -> None:
 
         factory.opened[0].release()
         final = await session.collect()
-        assert final.messages == ["Good news, the manager approved it and it's done."]
+        assert final.messages == [
+            "Good news: the manager approved it, and your refund of 250 dollars has gone through."
+        ]
     finally:
         await session.close()
 
@@ -366,3 +368,42 @@ async def test_barge_in_cancels_a_read() -> None:
 
     assert output.log == []
     assert router.has_pending_holds() is False
+
+
+@pytest.mark.parametrize(
+    ("outcome", "reason", "content", "spoken"),
+    [
+        (
+            Outcome.RAN,
+            "approved",
+            '{"payment_id": 23, "amount": 40.0}',
+            "Good news: the manager approved it, and your refund of 40 dollars has gone through.",
+        ),
+        (
+            Outcome.NOT_RUN,
+            "rejected",
+            "not run",
+            "I'm sorry, the manager declined your refund, so nothing was changed.",
+        ),
+        (
+            Outcome.NOT_RUN,
+            "timeout",
+            "not run",
+            "I'm sorry, I couldn't reach a manager in time, so nothing was changed.",
+        ),
+    ],
+)
+def test_spoken_hold_outcome_states_the_decision(
+    outcome: Outcome, reason: str, content: str, spoken: str
+) -> None:
+    from countersign_agent.voice.holds import spoken_hold_outcome
+
+    result = ToolResult(
+        tool="issue_refund",
+        decision=Decision.HOLD,
+        outcome=outcome,
+        content=content,
+        reason=reason,
+        armoriq_mode="live",
+    )
+    assert spoken_hold_outcome("issue_refund", result) == spoken

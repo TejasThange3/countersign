@@ -136,7 +136,8 @@ class _TextCallOutput(PipelineCallOutput):
     async def deliver_hold_outcome(
         self, tool: str, result: ToolResult, *, interrupted: bool = False
     ) -> None:
-        self.tracker.awaiting_response = True
+        if not self.speaks_outcome_directly(interrupted=interrupted):
+            self.tracker.awaiting_response = True  # an LLM reply follows
         await super().deliver_hold_outcome(tool, result, interrupted=interrupted)
 
 
