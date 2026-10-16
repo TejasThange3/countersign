@@ -71,7 +71,11 @@ class AgentSettings(BaseSettings):
     elevenlabs_voice_id: str = "21m00Tcm4TlvDq8ikWAM"  # "Rachel", an ElevenLabs premade voice
     elevenlabs_tts_model: str = "eleven_flash_v2_5"
 
-    stt_provider: Literal["whisper", "elevenlabs"] = "whisper"
+    # whisper: local faster-whisper on the GPU (development). groq: Whisper on Groq's servers,
+    # for hosts without a GPU (Railway); same key as the LLM, 0 ElevenLabs credits.
+    stt_provider: Literal["whisper", "groq", "elevenlabs"] = "whisper"
+    # Groq's hosted Whisper; turbo is the fast, cheap one and handles English well.
+    groq_stt_model: str = "whisper-large-v3-turbo"
     # Measured on the same recorded call: distil-large-v3 got "My booking reference is LRK
     # 1001. Last name, Okafor." exactly; distil-medium.en lost the name and turned the number
     # into "1,000". Large runs on the GPU (186 s of audio in 1.4 s). distil-medium.en (~400 MB)

@@ -1,6 +1,6 @@
 """The audio pipeline for one phone call.
 
-    transport in -> STT -> user context (Silero VAD + smart-turn) -> Gemini (tools)
+    transport in -> STT -> user context (Silero VAD + smart-turn) -> LLM (tools)
                  -> ElevenLabs TTS -> transport out -> assistant context
 
 Barge-in: the user aggregator's VAD start strategy interrupts the bot when the caller talks
@@ -54,6 +54,14 @@ def make_stt(settings: AgentSettings) -> STTService:
         from pipecat.services.elevenlabs.stt import ElevenLabsRealtimeSTTService
 
         return ElevenLabsRealtimeSTTService(api_key=settings.elevenlabs_api_key)
+
+    if settings.stt_provider == "groq":
+        from pipecat.services.groq.stt import GroqSTTService
+
+        return GroqSTTService(
+            api_key=settings.groq_api_key,
+            settings=GroqSTTService.Settings(model=settings.groq_stt_model),
+        )
 
     from pipecat.services.whisper.stt import WhisperSTTService
 

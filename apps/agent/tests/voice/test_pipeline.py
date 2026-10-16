@@ -58,3 +58,32 @@ def test_whisper_vocabulary_is_opt_in(
 
     assert built["settings"].initial_prompt == prompt
     assert built["settings"].hotwords == hotwords
+
+
+def test_groq_stt_uses_the_groq_key_and_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    from pipecat.services.groq import stt as groq_stt
+
+    built: dict[str, Any] = {}
+
+    class RecordingGroq:
+        Settings = groq_stt.GroqSTTService.Settings
+
+        def __init__(self, *, api_key: str, settings: Any, **kwargs: Any) -> None:
+            built["api_key"] = api_key
+            built["settings"] = settings
+
+    monkeypatch.setattr(groq_stt, "GroqSTTService", RecordingGroq)
+    pipeline.make_stt(
+        make_settings(stt_provider="groq", groq_api_key="fake-key", groq_stt_model="m-1")
+    )
+
+    assert built["api_key"] == "fake-key"
+    assert built["settings"].model == "m-1"
+
+
+def test_groq_stt_builds_without_network() -> None:
+    from pipecat.services.groq.stt import GroqSTTService
+
+    stt = pipeline.make_stt(make_settings(stt_provider="groq", groq_api_key="fake-key"))
+
+    assert isinstance(stt, GroqSTTService)
