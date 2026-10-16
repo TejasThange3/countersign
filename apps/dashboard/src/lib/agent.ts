@@ -57,7 +57,9 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const agent = {
-  open: () => call<{ call_id: string }>("/text/calls", { method: "POST" }),
+  /** `typed`: the agent skips read-backs that only guard against misheard speech. */
+  open: () =>
+    call<{ call_id: string }>("/text/calls", { method: "POST", body: JSON.stringify({ typed: true }) }),
 
   /** One caller turn. Returns once the agent has replied; a held request keeps waiting. */
   say: (callId: string, text: string) =>
