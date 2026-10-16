@@ -143,6 +143,9 @@ class AgentSettings(BaseSettings):
     agent_port: int = 7860
     # Browser origins allowed to call this API (the website), comma-separated. Empty: none.
     cors_origins: str = ""
+    # Public demo only: what the agent says when every LLM model is rate limited or down
+    # (see FallbackGroqLLMService). Empty: the failure is raised (evals rely on that).
+    llm_busy_message: str = ""
     # Demo only: lets the person on a call act as the hotel manager for that call's own held
     # request (POST /text/calls/{id}/decision), sent to ArmorIQ's real approval API as
     # ARMORIQ_ADMIN_EMAIL. Off unless set; in production a human decides in the ArmorIQ console.

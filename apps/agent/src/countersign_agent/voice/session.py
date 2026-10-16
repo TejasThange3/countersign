@@ -61,6 +61,7 @@ def groq_llm(settings: AgentSettings) -> LLMService:
         max_rate_limit_wait_s=settings.llm_rate_limit_max_wait_s,
         cooldown_s=settings.llm_model_cooldown_s,
         request_timeout_s=settings.llm_request_timeout_s,
+        busy_message=settings.llm_busy_message,
     )
 
 

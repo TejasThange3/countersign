@@ -179,3 +179,18 @@ def test_requests_time_out_quickly() -> None:
     timeout = service._client.timeout
     assert timeout.connect == 8.0
     assert timeout.read == 20.0  # mid-stream pauses can no longer fall back, so allow more
+
+
+async def test_busy_message_replaces_the_failure_when_every_model_is_limited(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    limited = status_error(429, {"retry-after": "120"})
+    service, _requested, _slept = make_service(
+        monkeypatch, {PRIMARY: [limited], FALLBACK: [limited]}
+    )
+    service._busy_message = "Sorry, our line is busy."
+
+    stream = await service.get_chat_completions(LLMContext())
+    chunks = [chunk async for chunk in stream]
+
+    assert [c.choices[0].delta.content for c in chunks] == ["Sorry, our line is busy."]

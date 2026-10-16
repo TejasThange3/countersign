@@ -198,6 +198,25 @@ def rate_limit_wait_s(exc: RateLimitError) -> float | None:
     return None
 
 
+async def _single_reply(text: str, model: str) -> AsyncIterator[ChatCompletionChunk]:
+    """A one-chunk completion stream carrying a fixed assistant reply."""
+    yield ChatCompletionChunk.model_validate(
+        {
+            "id": "busy",
+            "object": "chat.completion.chunk",
+            "created": int(time.time()),
+            "model": model,
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"role": "assistant", "content": text},
+                    "finish_reason": "stop",
+                }
+            ],
+        }
+    )
+
+
 class FallbackGroqLLMService(GroqLLMService):
     """Groq (OpenAI-compatible) with one header-timed retry on a 429, then the fallback."""
 
@@ -208,6 +227,7 @@ class FallbackGroqLLMService(GroqLLMService):
         max_rate_limit_wait_s: float = 10.0,
         cooldown_s: float = 60.0,
         request_timeout_s: float = 8.0,
+        busy_message: str = "",
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
@@ -221,6 +241,10 @@ class FallbackGroqLLMService(GroqLLMService):
         self._fallback_model = fallback_model
         self._max_rate_limit_wait_s = max_rate_limit_wait_s
         self._cooldown_s = cooldown_s
+        # Public demo only: said instead of failing when every model is rate limited or
+        # down, so a caller hears an apology rather than silence. Empty (the default and
+        # what evals use): the failure is raised, so an outage can never pass as a reply.
+        self._busy_message = busy_message
         self.on_model_used: ModelListener | None = None
 
     async def get_chat_completions(self, context: LLMContext) -> AsyncStream[ChatCompletionChunk]:
@@ -274,4 +298,7 @@ class FallbackGroqLLMService(GroqLLMService):
                     return stream
         finally:
             self._settings.model = primary
+        if self._busy_message and last_error is not None:
+            logger.error("every Groq model failed (%s); saying the busy line", last_error)
+            return _single_reply(self._busy_message, primary)  # type: ignore[return-value]
         raise last_error or RuntimeError("Groq returned no response")
