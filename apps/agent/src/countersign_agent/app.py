@@ -5,6 +5,8 @@ Endpoints:
 - GET  /client/                      Pipecat's prebuilt browser client (mic test page)
 - POST /start, POST|PATCH /api/offer SmallWebRTC signalling used by the browser client
 - WS   /ws                           raw PCM audio for the caller simulator
+- WS   /voice                        the website's voice call: raw PCM plus JSON events
+- POST /calls/{id}/decision          demo only: decide a voice or text call's own hold
 - POST /text/calls                   open a text-mode call (no STT/TTS, no ElevenLabs credits)
 - POST /text/calls/{id}/turns        send one caller turn, get the agent's reply
 - POST /text/calls/{id}/collect      fetch output that arrived later (a hold outcome)
@@ -43,9 +45,13 @@ from countersign_agent.contracts import GatewayFactory
 from countersign_agent.voice.config import AgentSettings
 from countersign_agent.voice.fake_gateway import FakeGatewayFactory
 from countersign_agent.voice.pipeline import run_audio_call
-from countersign_agent.voice.session import LLMFactory, make_llm
+from countersign_agent.voice.session import CallCore, LLMFactory, make_llm
 from countersign_agent.voice.text_mode import TextReply, TextSession
-from countersign_agent.voice.transports import simulator_transport, webrtc_transport
+from countersign_agent.voice.transports import (
+    browser_transport,
+    simulator_transport,
+    webrtc_transport,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +130,7 @@ def create_app(
     gateway_factory = factory or load_factory(settings.gateway_factory)
     desk = manager_desk or default_manager_desk(settings)
     text_calls: dict[str, TextSession] = {}
+    voice_cores: dict[str, CallCore] = {}  # live website voice calls
     last_used: dict[str, float] = {}  # call id -> time.monotonic() of its last request
     webrtc_sessions: set[str] = set()
     audio_tasks: set[asyncio.Task[None]] = set()
@@ -229,6 +236,39 @@ def create_app(
         call_id = f"ws-{uuid.uuid4().hex[:8]}"
         await run_audio_call(call_id, simulator_transport(websocket), gateway_factory, settings)
 
+    # --- Website voice calls ---
+
+    @app.websocket("/voice")
+    async def website_voice(websocket: WebSocket) -> None:
+        # CORS does not cover WebSockets: check the page's origin here.
+        origin = (websocket.headers.get("origin") or "").rstrip("/")
+        if origins and origin not in origins:
+            await websocket.close(code=1008)
+            return
+        await websocket.accept()
+        if len(voice_cores) >= settings.max_voice_calls:
+            await websocket.send_json({"type": "busy"})
+            await websocket.close(code=1013)
+            return
+        call_id = f"voice-{uuid.uuid4().hex[:8]}"
+        await websocket.send_json({"type": "call", "call_id": call_id})
+
+        def track(core: CallCore | None) -> None:
+            if core is None:
+                voice_cores.pop(call_id, None)
+            else:
+                voice_cores[call_id] = core
+
+        await run_audio_call(
+            call_id,
+            browser_transport(websocket),
+            gateway_factory,
+            settings,
+            browser_events=True,
+            on_core=track,
+            max_duration_s=settings.voice_call_max_s,
+        )
+
     # --- Text mode ---
 
     def text_call(call_id: str) -> TextSession:
@@ -282,12 +322,13 @@ def create_app(
             raise HTTPException(status_code=504, detail="the agent did not finish in time") from exc
 
     @app.post("/text/calls/{call_id}/decision")
+    @app.post("/calls/{call_id}/decision")
     async def decide_hold(call_id: str, body: HoldDecision) -> HoldDecided:
         if desk is None:
             raise HTTPException(status_code=403, detail="manager decisions are not enabled")
-        session = text_call(call_id)
+        core = voice_cores.get(call_id) or text_call(call_id).core
         # Only this call's own held requests: the delegation id never comes from the browser.
-        held = [h for h in session.core.router.held_requests if body.tool in (None, h.tool)]
+        held = [h for h in core.router.held_requests if body.tool in (None, h.tool)]
         if not held:
             raise HTTPException(status_code=409, detail="nothing is waiting for a manager")
         result = await desk.decide(held[0], body.decision)

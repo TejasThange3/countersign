@@ -209,3 +209,81 @@ def test_open_calls_are_capped() -> None:
         assert client.post("/text/calls").status_code == 201
         busy = client.post("/text/calls")
         assert busy.status_code == 503
+
+
+def voice_app(monkeypatch: pytest.MonkeyPatch, **settings: Any) -> tuple[Any, list[Any]]:
+    """The app with the audio pipeline replaced: the call registers a core with one held
+    request, then waits until the browser hangs up."""
+    import asyncio
+
+    from countersign_agent import app as app_module
+    from countersign_agent.contracts import Decision, Outcome, ToolResult
+
+    held = ToolResult(
+        tool="issue_refund",
+        decision=Decision.HOLD,
+        outcome=Outcome.PENDING,
+        content="pending",
+        delegation_id="d-1",
+        armoriq_mode="live",
+    )
+
+    class Router:
+        def __init__(self) -> None:
+            self.held_requests = [held]
+
+    class Core:
+        def __init__(self) -> None:
+            self.router = Router()
+
+    async def fake_call(call_id: str, transport: Any, *_a: Any, on_core: Any, **_k: Any) -> None:
+        on_core(Core())
+        try:
+            await asyncio.sleep(3600)
+        finally:
+            on_core(None)
+
+    monkeypatch.setattr(app_module, "run_audio_call", fake_call)
+    desk = RecordingDesk()
+    app = create_app(
+        make_settings(**settings),
+        FakeGatewayFactory(),
+        llm_factory=lambda _s: FakeScriptedLLM(hotel_script),
+        manager_desk=desk,
+    )
+    return app, desk.decided
+
+
+def test_voice_call_announces_its_id_and_its_hold_can_be_decided(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app, decided = voice_app(monkeypatch, cors_origins="https://site.example")
+    with TestClient(app) as client:
+        with client.websocket_connect("/voice", headers={"origin": "https://site.example"}) as ws:
+            first = ws.receive_json()
+            assert first["type"] == "call"
+            response = client.post(
+                f"/calls/{first['call_id']}/decision", json={"decision": "reject"}
+            )
+            assert response.status_code == 200
+    assert decided == [("issue_refund", "reject")]
+
+
+def test_voice_from_another_origin_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    from starlette.websockets import WebSocketDisconnect
+
+    app, _ = voice_app(monkeypatch, cors_origins="https://site.example")
+    with TestClient(app) as client:
+        with pytest.raises(WebSocketDisconnect) as closed:
+            with client.websocket_connect("/voice", headers={"origin": "https://evil.example"}):
+                pass
+        assert closed.value.code == 1008
+
+
+def test_voice_calls_are_capped(monkeypatch: pytest.MonkeyPatch) -> None:
+    app, _ = voice_app(monkeypatch, max_voice_calls=1)
+    with TestClient(app) as client:
+        with client.websocket_connect("/voice") as first:
+            assert first.receive_json()["type"] == "call"
+            with client.websocket_connect("/voice") as second:
+                assert second.receive_json() == {"type": "busy"}

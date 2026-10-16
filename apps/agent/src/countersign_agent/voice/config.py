@@ -147,6 +147,10 @@ class AgentSettings(BaseSettings):
     # visitor who closed the tab), and no more than this many may be open at once.
     text_call_idle_s: float = Field(default=600.0, gt=0)
     max_text_calls: int = Field(default=25, gt=0)
+    # Website voice calls spend ElevenLabs credits and STT/LLM quota: few at once,
+    # and each is hung up after this long.
+    max_voice_calls: int = Field(default=4, gt=0)
+    voice_call_max_s: float = Field(default=300.0, gt=0)
     # Public demo only: what the agent says when every LLM model is rate limited or down
     # (see FallbackGroqLLMService). Empty: the failure is raised (evals rely on that).
     llm_busy_message: str = ""
