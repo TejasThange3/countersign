@@ -25,3 +25,10 @@ async def test_caller_audio_in_and_text_ignored() -> None:
     frame = await s.deserialize(b"\x00\x00")
     assert isinstance(frame, InputAudioRawFrame) and frame.sample_rate == 16_000
     assert await s.deserialize('{"type":"ping"}') is None
+
+
+async def test_pipecat_rtvi_messages_are_not_forwarded() -> None:
+    rtvi = OutputTransportMessageUrgentFrame(
+        message={"label": "rtvi-ai", "type": "bot-tts-text", "data": {"text": "hi"}}
+    )
+    assert await BrowserSerializer().serialize(rtvi) is None

@@ -40,13 +40,21 @@ class RawPCMSerializer(FrameSerializer):
         return None
 
 
+# The website's event types (voice/browser_events.py). Pipecat's own RTVI client messages
+# use the same frame type (one per spoken word); the website does not speak RTVI.
+BROWSER_EVENTS = frozenset({"call", "caller", "agent", "interrupt", "decision", "held", "settled"})
+
+
 class BrowserSerializer(RawPCMSerializer):
     """The simulator protocol plus JSON text messages from the agent (transcript lines,
     ArmorIQ decisions, interruptions) for the website's live view."""
 
     async def serialize(self, frame: Frame) -> str | bytes | None:
         if isinstance(frame, OutputTransportMessageFrame | OutputTransportMessageUrgentFrame):
-            return json.dumps(frame.message)
+            message = frame.message
+            if isinstance(message, dict) and message.get("type") in BROWSER_EVENTS:
+                return json.dumps(message)
+            return None
         return await super().serialize(frame)
 
 
