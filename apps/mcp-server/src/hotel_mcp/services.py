@@ -280,35 +280,27 @@ def _squash(name: str) -> str:
     return re.sub(r"[^a-z]", "", name.lower())
 
 
-def _within_one_edit(a: str, b: str) -> bool:
-    """True when a and b differ by at most one inserted, deleted or substituted letter."""
-    if abs(len(a) - len(b)) > 1:
-        return False
-    if len(a) > len(b):
-        a, b = b, a
-    i = j = edits = 0
-    while i < len(a) and j < len(b):
-        if a[i] != b[j]:
-            edits += 1
-            if edits > 1:
-                return False
-            if len(a) == len(b):
-                i += 1
-            j += 1
-        else:
-            i += 1
-            j += 1
-    return edits + (len(b) - j) <= 1
+def _edit_distance(a: str, b: str) -> int:
+    """Levenshtein distance: inserted, deleted or substituted letters between a and b."""
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
+        prev = cur
+    return prev[-1]
 
 
 def surname_matches(heard: str, actual: str) -> bool:
-    """Spoken surnames arrive split or one letter off ("Okay for" for Okafor, "Lindquist"
-    for Lindqvist). Allow one edit on names of five or more letters; the booking ref must
-    still match exactly and the bridge locks verification after three misses."""
+    """Spoken surnames arrive split or slightly off ("Okay for" or "Aukafor" for Okafor,
+    "Lindquist" for Lindqvist). Tolerance grows with length: exact under five letters, one
+    letter off at five, two from six. The booking ref must still match exactly and the
+    bridge locks verification after three misses."""
     h, a = _squash(heard), _squash(actual)
     if not h:
         return False
-    return h == a or (len(a) >= 5 and _within_one_edit(h, a))
+    allowed = 0 if len(a) < 5 else 1 if len(a) == 5 else 2
+    return _edit_distance(h, a) <= allowed
 
 
 async def verify_guest(session: AsyncSession, booking_ref: str, last_name: str) -> VerifyResult:
