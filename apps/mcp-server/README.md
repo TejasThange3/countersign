@@ -92,9 +92,9 @@ docker run --rm -p 8000:8000 -e MCP_BEARER_TOKEN=dev-token \
 The container runs `hotel-mcp migrate` (run a single replica: two starting at once could race on it) and then `hotel-mcp serve` on `$PORT`, as UID 1000 (which
 Hugging Face Spaces requires). Seed once with `docker run ... hotel-mcp hotel-mcp seed`.
 
-**Railway:** set the service's Root Directory to `apps/mcp-server` and its config file path to
-`/infra/railway.json` (Dockerfile build, `/health` healthcheck). Set `DATABASE_URL` (Neon pooled
-URL) and `MCP_BEARER_TOKEN` in the service variables; Railway sets `PORT`.
+**Railway:** set the service's Root Directory to `apps/mcp-server`; Railway then reads
+`apps/mcp-server/railway.json` (Dockerfile build, `/health` healthcheck). Set `DATABASE_URL`
+and `MCP_BEARER_TOKEN` in the service variables; Railway sets `PORT`.
 
 ## Tests
 

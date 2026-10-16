@@ -663,11 +663,11 @@ for this guest", the same words as for a booking that doesn't exist. The hatch i
   `hotel_mcp_test` database: migrations, seed, reset, one tool per tier, and guest A being refused
   guest B's booking on **every** booking-scoped tool.
 - **Deploy.** One Dockerfile (uv-installed, non-root UID 1000) runs `migrate` and then `serve` on
-  `$PORT`. `infra/railway.json` points Railway at it with a `/health` healthcheck.
+  `$PORT`. `apps/mcp-server/railway.json` points Railway at it with a `/health` healthcheck.
 
 **Where it lives.** `apps/mcp-server/src/hotel_mcp/` (`server.py` tools and auth, `services.py`
 logic and scoping, `models.py`, `seed.py`, `cli.py`, `migrations/`), `apps/mcp-server/tests/`,
-`apps/mcp-server/Dockerfile`, `infra/railway.json`, `apps/mcp-server/README.md`.
+`apps/mcp-server/Dockerfile`, `apps/mcp-server/railway.json`, `apps/mcp-server/README.md`.
 
 **How to check it works.**
 ```bash
