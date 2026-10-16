@@ -30,18 +30,19 @@ export function TryConsole() {
               }`}
             />
             <span className="text-sm text-text">The Larkspur, front desk</span>
-            <span className="font-mono text-[11px] text-dim">
+            <span className="hidden font-mono text-[11px] text-dim sm:inline">
               {status === "connecting" ? "connecting to ArmorIQ…" : "text call"}
             </span>
           </div>
           <button
             type="button"
             onClick={reset}
+            aria-label="New call"
             disabled={status === "connecting"}
             className="inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] text-muted transition-colors hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
           >
             <ArrowCounterClockwise size={14} />
-            New call
+            <span className="hidden sm:inline">New call</span>
           </button>
         </div>
         {error && (
@@ -50,13 +51,23 @@ export function TryConsole() {
             {error}
           </p>
         )}
+        {held && (
+          // On small screens the side column sits below the steps; keep the decision in view.
+          <div className="border-b border-line p-3 lg:hidden">
+            <ManagerCard key={held} tool={held} deciding={status === "deciding"} onDecide={decide} />
+          </div>
+        )}
         <div className="min-h-0 flex-1">
           <Transcript lines={lines} status={status} onSend={send} />
         </div>
       </Frame>
 
       <aside className="order-3 space-y-4">
-        {held && <ManagerCard key={held} tool={held} deciding={status === "deciding"} onDecide={decide} />}
+        {held && (
+          <div className="hidden lg:block">
+            <ManagerCard key={held} tool={held} deciding={status === "deciding"} onDecide={decide} />
+          </div>
+        )}
         <Frame className="p-5">
           <DecisionLog log={log} />
         </Frame>

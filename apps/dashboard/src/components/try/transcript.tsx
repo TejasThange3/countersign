@@ -41,11 +41,11 @@ export function Transcript({
   };
 
   return (
-    <div className="flex h-full min-h-[28rem] flex-col">
+    <div className="flex h-full min-h-[24rem] flex-col lg:min-h-[28rem]">
       <div className="flex-1 space-y-4 overflow-y-auto px-5 py-6 md:px-7" aria-live="polite">
         {lines.length === 0 && (
           <p className="mx-auto mt-16 max-w-[34ch] text-center text-[15px] leading-relaxed text-dim">
-            You&apos;re calling The Larkspur&apos;s front desk. Pick a step on the left, or type anything.
+            You&apos;re calling The Larkspur&apos;s front desk. Pick a step from the list, or type anything.
           </p>
         )}
         <AnimatePresence initial={false}>
