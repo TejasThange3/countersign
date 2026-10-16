@@ -23,3 +23,13 @@ def test_prompt_says_nothing_a_caller_could_probe() -> None:
     text = system_prompt(date(2026, 10, 15)).lower()
     for word in ("armoriq", "policy", "policies", "limit", "threshold", "$"):
         assert word not in text
+
+
+def test_prompt_keeps_the_agent_on_topic() -> None:
+    # Prompt-only (model compliance is checked live): a caller got answers about football
+    # and personal questions, and a "search" for a guest by name that the agent can't do.
+    text = system_prompt(date(2026, 10, 15))
+    assert "only help with The Larkspur" in text
+    assert "do not answer it, not even partly" in text
+    assert "cannot look up bookings or guests by name alone" in text
+    assert "rather than guessing" in text
