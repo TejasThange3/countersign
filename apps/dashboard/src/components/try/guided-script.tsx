@@ -3,7 +3,14 @@
 import { ArrowUpRight } from "@phosphor-icons/react";
 import { DecisionChip, type DecisionKind } from "@/components/decision-chip";
 
-export type Step = { say: string; expect: string; kind: DecisionKind | "verify"; note: string };
+export type Step = {
+  say: string;
+  /** How to read it aloud on a voice call, when that differs. */
+  spoken?: string;
+  expect: string;
+  kind: DecisionKind | "verify";
+  note: string;
+};
 
 /** The demo path, in order. Each step shows what ArmorIQ is expected to decide. */
 export const STEPS: Step[] = [
@@ -15,6 +22,7 @@ export const STEPS: Step[] = [
   },
   {
     say: "My booking reference is LRK-1001, last name Okafor.",
+    spoken: "My booking reference is L R K one zero zero one, last name Okafor.",
     expect: "You're verified",
     kind: "verify",
     note: "Identity comes from verification, never from what the caller claims.",
@@ -45,7 +53,14 @@ export const STEPS: Step[] = [
   },
 ];
 
-export function GuidedScript({ onSay, disabled }: { onSay: (text: string) => void; disabled: boolean }) {
+/** `onSay` sends a step on a text call; without it (voice) the steps are lines to read aloud. */
+export function GuidedScript({
+  onSay,
+  disabled = false,
+}: {
+  onSay?: (text: string) => void;
+  disabled?: boolean;
+}) {
   return (
     <div>
       <div className="rounded-xl border border-line bg-ink p-4">
@@ -64,16 +79,13 @@ export function GuidedScript({ onSay, disabled }: { onSay: (text: string) => voi
       <ol className="mt-6 space-y-2">
         {STEPS.map((step, i) => (
           <li key={step.say}>
-            <button
-              type="button"
-              onClick={() => onSay(step.say)}
-              disabled={disabled}
-              className="group w-full cursor-pointer rounded-xl border border-line bg-panel px-4 py-3.5 text-left transition-[border-color,background-color,transform] duration-200 hover:border-line-strong hover:bg-panel-2 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
-            >
+            <StepShell onClick={onSay && (() => onSay(step.say))} disabled={disabled}>
               <div className="flex items-start gap-3">
                 <span className="pt-0.5 font-mono text-[12px] text-accent">{String(i + 1).padStart(2, "0")}</span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[14px] leading-snug text-text">&ldquo;{step.say}&rdquo;</p>
+                  <p className="text-[14px] leading-snug text-text">
+                    &ldquo;{onSay ? step.say : (step.spoken ?? step.say)}&rdquo;
+                  </p>
                   <div className="mt-2 flex items-center gap-2">
                     {step.kind === "verify" ? (
                       <DecisionChip kind="allow" label="verified" />
@@ -83,15 +95,41 @@ export function GuidedScript({ onSay, disabled }: { onSay: (text: string) => voi
                     <span className="truncate text-[12px] text-dim">{step.note}</span>
                   </div>
                 </div>
-                <ArrowUpRight
-                  size={14}
-                  className="mt-1 shrink-0 text-dim transition-colors group-hover:text-accent"
-                />
+                {onSay && (
+                  <ArrowUpRight
+                    size={14}
+                    className="mt-1 shrink-0 text-dim transition-colors group-hover:text-accent"
+                  />
+                )}
               </div>
-            </button>
+            </StepShell>
           </li>
         ))}
       </ol>
     </div>
+  );
+}
+
+const STEP_CLASS = "group w-full rounded-xl border border-line bg-panel px-4 py-3.5 text-left";
+
+function StepShell({
+  onClick,
+  disabled,
+  children,
+}: {
+  onClick?: () => void;
+  disabled: boolean;
+  children: React.ReactNode;
+}) {
+  if (!onClick) return <div className={STEP_CLASS}>{children}</div>;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`${STEP_CLASS} cursor-pointer transition-[border-color,background-color,transform] duration-200 hover:border-line-strong hover:bg-panel-2 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50`}
+    >
+      {children}
+    </button>
   );
 }
