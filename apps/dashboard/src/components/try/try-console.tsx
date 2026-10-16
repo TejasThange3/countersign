@@ -117,7 +117,7 @@ function Shell({
 }) {
   const card = held && <ManagerCard key={held} tool={held} deciding={deciding} onDecide={onDecide} />;
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[20rem_minmax(0,1fr)_22rem] lg:gap-5">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[16rem_minmax(0,1fr)_18rem] lg:gap-5 xl:grid-cols-[20rem_minmax(0,1fr)_22rem]">
       <aside className="order-2 lg:order-1">
         <p className="mb-4 font-mono text-[11px] uppercase tracking-[0.14em] text-dim">{scriptTitle}</p>
         {script}
