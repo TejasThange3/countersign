@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { ArrowRight, GithubLogo } from "@phosphor-icons/react/dist/ssr";
+import { CtaButton } from "@/components/cta-button";
 import { Guilloche } from "@/components/guilloche";
 import { Reveal } from "@/components/reveal";
 import { REPO_URL } from "@/lib/site";
@@ -26,25 +26,13 @@ export function Hero() {
             </p>
           </Reveal>
           <Reveal delay={0.16}>
-            <div className="mt-10 flex flex-wrap items-center gap-3">
-              <Link
-                href="/try"
-                className="group inline-flex items-center gap-2 rounded-full bg-accent px-6 py-3 text-[15px] font-medium text-ink transition-[background-color,transform] duration-200 hover:bg-accent-hover active:scale-[0.98]"
-              >
+            <div className="mt-10 flex flex-wrap items-center gap-2">
+              <CtaButton href="/try" trailing={<ArrowRight size={16} weight="bold" />}>
                 Try to talk it into a refund
-                <ArrowRight
-                  size={16}
-                  weight="bold"
-                  className="transition-transform duration-200 group-hover:translate-x-0.5"
-                />
-              </Link>
-              <a
-                href={REPO_URL}
-                className="inline-flex items-center gap-2 rounded-full border border-line-strong bg-ink/40 px-6 py-3 text-[15px] text-text backdrop-blur transition-[background-color,transform] duration-200 hover:bg-panel-2 active:scale-[0.98]"
-              >
-                <GithubLogo size={16} weight="bold" />
+              </CtaButton>
+              <CtaButton href={REPO_URL} variant="ghost" icon={<GithubLogo size={16} weight="bold" />}>
                 Read the code
-              </a>
+              </CtaButton>
             </div>
           </Reveal>
         </div>

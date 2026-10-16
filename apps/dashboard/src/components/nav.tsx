@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowRight, GithubLogo, SealCheck } from "@phosphor-icons/react/dist/ssr";
+import { CtaButton } from "@/components/cta-button";
 import { REPO_URL } from "@/lib/site";
 
 // Root-relative so they also work from /try.
@@ -27,26 +28,19 @@ export function Nav() {
             </li>
           ))}
         </ul>
-        <div className="flex items-center gap-2">
-          <a
+        <div className="flex items-center gap-1">
+          <CtaButton
             href={REPO_URL}
-            aria-label="Source on GitHub"
-            className="inline-flex items-center gap-2 rounded-full border border-line-strong px-3 py-2 text-sm text-text transition-[background-color,transform] duration-200 hover:bg-panel-2 active:scale-[0.98] sm:px-4"
+            variant="ghost"
+            size="sm"
+            label="Source on GitHub"
+            icon={<GithubLogo size={15} weight="bold" />}
           >
-            <GithubLogo size={16} weight="bold" />
             <span className="hidden sm:inline">Source</span>
-          </a>
-          <Link
-            href="/try"
-            className="group inline-flex items-center gap-1.5 rounded-full bg-accent px-4 py-2 text-sm font-medium text-ink transition-[background-color,transform] duration-200 hover:bg-accent-hover active:scale-[0.98]"
-          >
+          </CtaButton>
+          <CtaButton href="/try" size="sm" trailing={<ArrowRight size={14} weight="bold" />}>
             Try it
-            <ArrowRight
-              size={14}
-              weight="bold"
-              className="transition-transform duration-200 group-hover:translate-x-0.5"
-            />
-          </Link>
+          </CtaButton>
         </div>
       </nav>
     </header>
