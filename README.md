@@ -6,7 +6,7 @@ real database, and **every tool call goes through ArmorIQ before it runs**: Armo
 holds it for a human manager, or blocks it.
 
 - **Live demo:** https://countersign-aimcp.vercel.app/try (voice or text; demo guest `LRK-1001` / `Okafor`)
-- **Demo video:** _link added on submission_
+- **Demo video:** https://youtu.be/eywP_Y7mPic (4:32)
 - **Built for:** Flow State 2026 (ArmorIQ), Oct 13-17, 2026
 
 ## Problem and pitch

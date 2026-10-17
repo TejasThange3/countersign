@@ -28,4 +28,4 @@ brute force.
 Railway (agent, MCP server, database) and Vercel (website). Built with Claude Code, reviewed
 with Codex.
 
-**Links.** Repo: https://github.com/TejasThange3/countersign. Demo video: _link_.
+**Links.** Repo: https://github.com/TejasThange3/countersign. Demo video: https://youtu.be/eywP_Y7mPic. Live demo: https://countersign-aimcp.vercel.app/try.
