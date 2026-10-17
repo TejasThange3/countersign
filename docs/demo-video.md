@@ -55,9 +55,10 @@ I'll show the GitHub repo and eval reports from screenshots, so you don't need t
 
 ### Your three lines in clip 2 (say them naturally)
 
-1. "Hi, do you have a room from November 2nd to 4th for two people?"
+1. "Hi, do you have a room from November 2nd to 4th for two people? Just checking prices for now."
 2. "I already have a booking with you. The reference is L R K one zero zero one, last name Okafor."
-   *(If it reads the reference back to you, say "Yes, that's right.")*
+   *(Only if it reads the reference back to you, say "Yes, that's right." Never answer "yes" to
+   anything else: if it offers to book a room, say "No thanks, just the refund question."*)
 3. "I'd like a forty dollar refund on that booking, the room was noisy."
 
 ---

@@ -19,7 +19,7 @@ export type Step = {
 /** The first three steps, always visible. Each shows what ArmorIQ is expected to decide. */
 export const STEPS: Step[] = [
   {
-    say: "Do you have a room from November 2nd to 4th for two people?",
+    say: "Do you have a room from November 2nd to 4th for two people? Just checking prices for now.",
     expect: "Allowed",
     kind: "allow",
     note: "Read-only lookups are open to anyone.",
