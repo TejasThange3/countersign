@@ -16,13 +16,13 @@ const STAGES = [
     icon: Microphone,
     name: "Caller",
     detail:
-      "Speaks in the browser over WebRTC. Interruptions are allowed, so the caller can cut in at any time.",
+      "Speaks in the browser; audio streams to the agent over a WebSocket. The caller can cut in at any time.",
   },
   {
     icon: Waveform,
     name: "Speech to text",
     detail:
-      "Whisper distil-large-v3 runs locally on the GPU. Silero voice detection decides when someone is speaking.",
+      "Whisper large-v3-turbo on Groq, with ElevenLabs Scribe as a fallback. Silero voice detection decides when someone is speaking.",
   },
   {
     icon: Brain,
