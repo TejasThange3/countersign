@@ -487,4 +487,4 @@ def test_load_factory_builds_the_real_bridge_without_touching_the_network(
     factory = load_factory(path)
     assert isinstance(factory, GovernedGatewayFactory)
     assert not is_fake_factory(factory)
-    assert factory._client is None  # the ArmorIQ client was not built (it is lazy)
+    assert factory._clients is None  # no ArmorIQ client was built (they are lazy)

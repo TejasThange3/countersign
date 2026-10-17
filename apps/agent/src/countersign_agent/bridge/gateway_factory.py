@@ -52,7 +52,9 @@ class GovernedGatewayFactory:
             self._enforcer_factory = self._disabled_enforcer
         else:
             self._enforcer_factory = self._armoriq_enforcer
-        self._client: ArmorIQClient | None = None
+        # One client per identity: the SDK keeps the acting user on the client, so separate
+        # clients let plans for different identities mint in parallel (see PLAN_EXECUTOR).
+        self._clients: dict[str, ArmorIQClient] | None = None
         self._client_lock = asyncio.Lock()
 
     async def open_call(self, call_id: str, events: EventSink | None = None) -> GovernedGateway:
@@ -92,21 +94,27 @@ class GovernedGatewayFactory:
 
     async def _armoriq_enforcer(self, tool_names: list[str]) -> Enforcer:
         try:
-            client = await self._armoriq_client()
+            clients = await self._armoriq_clients()
         except Exception:
             # Not cached: the next call tries again.
             logger.exception("ArmorIQ client unavailable; this call fails closed")
             return UnavailableEnforcer()
         settings = self.settings
         return ArmorIQEnforcer(
-            session_factory=lambda email: start_user_session(client, settings, email),
-            approvals=CheckedApprovals(client),
+            # An identity without its own client raises here, so its plan fails closed.
+            session_factory=lambda email: start_user_session(clients[email], settings, email),
+            approvals=CheckedApprovals(clients[settings.armoriq_user_guest]),
             tool_names=tool_names,
             poll_seconds=settings.armoriq_approval_poll_seconds,
+            plan_executor=None,
         )
 
-    async def _armoriq_client(self) -> ArmorIQClient:
+    async def _armoriq_clients(self) -> dict[str, ArmorIQClient]:
         async with self._client_lock:
-            if self._client is None:
-                self._client = await asyncio.to_thread(build_client, self.settings)
-            return self._client
+            if self._clients is None:
+                emails = [self.settings.armoriq_user_unverified, self.settings.armoriq_user_guest]
+                built = await asyncio.gather(
+                    *(asyncio.to_thread(build_client, self.settings) for _ in emails)
+                )
+                self._clients = dict(zip(emails, built, strict=True))
+            return self._clients
