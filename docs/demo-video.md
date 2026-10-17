@@ -56,7 +56,7 @@ I'll show the GitHub repo and eval reports from screenshots, so you don't need t
 ### Your three lines in clip 2 (say them naturally)
 
 1. "Hi, do you have a room from November 2nd to 4th for two people?"
-2. "My booking reference is L R K one zero zero one, last name Okafor."
+2. "I already have a booking with you. The reference is L R K one zero zero one, last name Okafor."
    *(If it reads the reference back to you, say "Yes, that's right.")*
 3. "I'd like a forty dollar refund on that booking, the room was noisy."
 

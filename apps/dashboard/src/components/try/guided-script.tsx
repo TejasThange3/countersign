@@ -25,8 +25,8 @@ export const STEPS: Step[] = [
     note: "Read-only lookups are open to anyone.",
   },
   {
-    say: "My booking reference is LRK-1001, last name Okafor.",
-    spoken: "My booking reference is L R K one zero zero one, last name Okafor.",
+    say: "I already have a booking with you: reference LRK-1001, last name Okafor.",
+    spoken: "I already have a booking with you. The reference is L R K one zero zero one, last name Okafor.",
     expect: "Verified",
     kind: "allow",
     note: "Identity comes from verification, never from what the caller claims.",
