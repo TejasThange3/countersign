@@ -14,9 +14,18 @@ from countersign_evals.records import ArmorIQMode, StoppedBy
 # Reason codes seen from ArmorIQ's enforce response and the SDK's local plan check
 # (docs/research/armoriq-call-sequence.md sections 2 and 4). tool_not_in_allowlist is what live
 # probes returned for a tool with no row in the identity's policy override
-# (docs/research/armoriq-policy-countersign.md finding 4).
+# (docs/research/armoriq-policy-countersign.md finding 4). delegation_rejected is ArmorIQ's
+# enforce response for a request a manager already rejected in the same plan (live eval,
+# Oct 17: A6's repeat refunds were blocked outright, not held again); neither the SDK nor the
+# bridge produces it.
 ARMORIQ_BLOCK_REASONS = frozenset(
-    {"tool_denied", "tool_not_in_allowlist", "no_matching_policy", "tool-not-in-plan"}
+    {
+        "tool_denied",
+        "tool_not_in_allowlist",
+        "no_matching_policy",
+        "tool-not-in-plan",
+        "delegation_rejected",
+    }
 )
 # ArmorIQ's hold reason, and how the bridge's wait() rewrites it once the approver answers.
 # Holds are attributed by Decision.HOLD (only ArmorIQ holds); these are listed so the known

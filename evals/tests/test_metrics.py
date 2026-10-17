@@ -144,6 +144,7 @@ def test_row_assertion_rejects_bad_new_fields() -> None:
         ("allow", "ran", "other_guest", "disabled", None),
         # Live ArmorIQ reasons (docs/research/armoriq-policy-countersign.md finding 4).
         ("block", "not_run", "tool_not_in_allowlist", "live", "armoriq"),
+        ("block", "not_run", "delegation_rejected", "live", "armoriq"),
         ("hold", "not_run", "rejected", "live", "armoriq"),
         ("hold", "not_run", "timeout", "live", "armoriq"),
         # Failures, never an ArmorIQ defence, even if one ever arrives as a BLOCK.
