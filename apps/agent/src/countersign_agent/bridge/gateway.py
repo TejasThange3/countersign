@@ -115,8 +115,15 @@ class GovernedGateway:
         return self._enforcer.mode
 
     async def start(self) -> None:
+        # The guest's plan is minted alongside (it takes seconds) and only takes effect when
+        # verify_guest passes.
         self._unbilled_ms = await self._enforcer.start(
-            self._identities["unverified"], f"Countersign front desk call {self.call_id}"
+            self._identities["unverified"],
+            f"Countersign front desk call {self.call_id}",
+            then_prepare=(
+                self._identities["guest"],
+                f"Countersign front desk call {self.call_id}, verified guest",
+            ),
         )
 
     def tool_specs(self) -> list[ToolSpec]:
@@ -217,7 +224,8 @@ class GovernedGateway:
             outcome = self._identity.record_verify(
                 bool(data.get("verified")), data.get(IDENTITY_ARG)
             )
-            await self._enforcer.report(name, args, output.data, None)
+            # Not awaited (~1 s): the caller is waiting to hear whether they're verified.
+            await self._enforcer.report(name, args, output.data, None, wait=False)
             if outcome is Verify.SWITCHED:
                 verdict.latency_ms += await self._enforcer.start(
                     self._identities["guest"],

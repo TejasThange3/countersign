@@ -25,10 +25,12 @@ logger = logging.getLogger("countersign_agent.bridge.enforcer")
 
 # The SDK mints a plan's token from `user_email_override`, one field on the shared client
 # that every `for_user(...).start_session()` overwrites (client.py:593-601, :1795-1823). Two
-# calls opening plans at once could mint a token for the other caller's identity, so
-# "open session + start plan" runs as one step on this single process-wide thread. A
-# dedicated thread (not a lock inside the shared pool) so calls queued behind a slow plan
-# never tie up the workers that every other call's check, report and approval polls use.
+# calls opening plans at once on one client could mint a token for the other caller's
+# identity, so with a shared client "open session + start plan" runs as one step on this
+# single process-wide thread. A dedicated thread (not a lock inside the shared pool) so calls
+# queued behind a slow plan never tie up the workers every other call's checks use.
+# The gateway factory gives each identity its own client instead (the override then never
+# changes), so it passes `plan_executor=None` and plans for different calls mint in parallel.
 PLAN_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="armoriq-plan")
 
 
@@ -76,9 +78,13 @@ class Enforcer(Protocol):
     mode: Literal["live", "disabled"]
     plan_id: str | None
 
-    async def start(self, user_email: str, goal: str) -> float:
+    async def start(
+        self, user_email: str, goal: str, *, then_prepare: tuple[str, str] | None = None
+    ) -> float:
         """Open a session for this identity and declare every tool in one plan. Returns the
-        ArmorIQ time in ms. On failure every later check is UNAVAILABLE (fail closed)."""
+        ArmorIQ time in ms. On failure every later check is UNAVAILABLE (fail closed).
+        `then_prepare` (email, goal) also starts opening the plan of the identity this call
+        may switch to; it saves time only and grants nothing until a start() switches to it."""
         ...
 
     async def check(self, tool: str, arguments: dict[str, Any]) -> Verdict:
@@ -92,9 +98,16 @@ class Enforcer(Protocol):
         ...
 
     async def report(
-        self, tool: str, arguments: dict[str, Any], result: Any, error: str | None
+        self,
+        tool: str,
+        arguments: dict[str, Any],
+        result: Any,
+        error: str | None,
+        *,
+        wait: bool = True,
     ) -> None:
-        """Best effort, never raises."""
+        """Best effort, never raises. `wait=False` sends it in the background, through the
+        session that is current now."""
         ...
 
     async def close(self) -> None: ...
@@ -145,9 +158,10 @@ class ArmorIQEnforcer:
         approvals: ApprovalBackend,
         tool_names: list[str],
         poll_seconds: float,
-        plan_executor: Executor = PLAN_EXECUTOR,
+        plan_executor: Executor | None = PLAN_EXECUTOR,
     ) -> None:
         self._session_factory = session_factory
+        # None: the loop's default pool (each identity has its own client; see PLAN_EXECUTOR).
         self._plan_executor = plan_executor
         self._approvals = approvals
         self._tool_names = tool_names
@@ -155,18 +169,49 @@ class ArmorIQEnforcer:
         self._session: GovernedSession | None = None
         self._user_email: str | None = None
         self.plan_id: str | None = None
+        # Minting a plan token takes ArmorIQ about 6-7 s, so the verified guest's plan is
+        # opened while the call is still unverified, and verify_guest switches to it at once.
+        self._standby: asyncio.Future[tuple[GovernedSession, Any]] | None = None
+        self._standby_email: str | None = None
+        self._closing: set[asyncio.Task[None]] = set()
+        self._reporting: set[asyncio.Task[None]] = set()
 
-    async def start(self, user_email: str, goal: str) -> float:
+    def _open_in_background(
+        self, user_email: str, goal: str
+    ) -> asyncio.Future[tuple[GovernedSession, Any]]:
+        return asyncio.get_running_loop().run_in_executor(
+            self._plan_executor, self._open_plan, user_email, goal
+        )
+
+    def _prepare(self, user_email: str, goal: str) -> None:
+        if self._standby is None:
+            self._standby_email = user_email
+            self._standby = self._open_in_background(user_email, goal)
+
+    def _take_standby(self, user_email: str) -> asyncio.Future[tuple[GovernedSession, Any]] | None:
+        standby, self._standby = self._standby, None
+        if standby is not None and self._standby_email != user_email:
+            standby.add_done_callback(self._close_orphan)
+            return None
+        return standby
+
+    async def start(
+        self, user_email: str, goal: str, *, then_prepare: tuple[str, str] | None = None
+    ) -> float:
         old, self._session, self.plan_id = self._session, None, None
         if old is not None:
-            await self._close_session(old)
+            # Off the caller's path: closing flushes spans over HTTP (~0.7 s). Reports still
+            # in flight go first, so the old session closes with its audit complete.
+            task = asyncio.create_task(self._retire(old, list(self._reporting)))
+            self._closing.add(task)
+            task.add_done_callback(self._closing.discard)
         self._user_email = user_email
         started = time.perf_counter()
         # A worker thread can't be cancelled: if the caller hangs up meanwhile, the session it
         # eventually returns must still be closed, so the thread's result is kept (shield).
-        opening = asyncio.get_running_loop().run_in_executor(
-            self._plan_executor, self._open_plan, user_email, goal
-        )
+        opening = self._take_standby(user_email) or self._open_in_background(user_email, goal)
+        if then_prepare is not None:
+            self._prepare(*then_prepare)
         try:
             session, token = await asyncio.shield(opening)
         except asyncio.CancelledError:
@@ -246,26 +291,59 @@ class ArmorIQEnforcer:
         )
 
     async def report(
-        self, tool: str, arguments: dict[str, Any], result: Any, error: str | None
+        self,
+        tool: str,
+        arguments: dict[str, Any],
+        result: Any,
+        error: str | None,
+        *,
+        wait: bool = True,
     ) -> None:
         """Like Strands: the tool already ran, so a failed audit must never turn a completed
         action (an issued refund) into an apparent failure."""
-        if self._session is None:
+        session = self._session  # bound now: a background report stays on this session
+        if session is None:
             return
         opts = (
             ReportOptions(status="error", error_message=error)
             if error is not None
             else ReportOptions(status="success")
         )
+        job = asyncio.create_task(self._send_report(session, tool, arguments, result, opts))
+        self._reporting.add(job)
+        job.add_done_callback(self._reporting.discard)
+        if wait:
+            await job
+
+    @staticmethod
+    async def _send_report(
+        session: GovernedSession,
+        tool: str,
+        arguments: dict[str, Any],
+        result: Any,
+        opts: ReportOptions,
+    ) -> None:
         try:
-            await asyncio.to_thread(self._session.report, tool, arguments, result, opts)
+            await asyncio.to_thread(session.report, tool, arguments, result, opts)
         except Exception:
             logger.warning("execution report failed for %s", tool, exc_info=True)
 
+    async def _retire(self, session: GovernedSession, reports: list[asyncio.Task[None]]) -> None:
+        if reports:
+            await asyncio.gather(*reports, return_exceptions=True)
+        await self._close_session(session)
+
     async def close(self) -> None:
+        if self._reporting:
+            await asyncio.gather(*self._reporting, return_exceptions=True)
+        standby, self._standby = self._standby, None
+        if standby is not None:  # never switched to (the caller didn't verify)
+            standby.add_done_callback(self._close_orphan)
         if self._session is not None:
             await self._close_session(self._session)
             self._session = None
+        if self._closing:
+            await asyncio.gather(*self._closing, return_exceptions=True)
 
     async def _close_session(self, session: GovernedSession) -> None:
         # Flushes the SDK's observability thread. Documented as never throwing, but a failure
@@ -282,7 +360,9 @@ class DisabledEnforcer:
     mode: Literal["live", "disabled"] = "disabled"
     plan_id: str | None = None
 
-    async def start(self, user_email: str, goal: str) -> float:
+    async def start(
+        self, user_email: str, goal: str, *, then_prepare: tuple[str, str] | None = None
+    ) -> float:
         return 0.0
 
     async def check(self, tool: str, arguments: dict[str, Any]) -> Verdict:
@@ -294,7 +374,13 @@ class DisabledEnforcer:
         raise RuntimeError("baseline mode never holds a call")
 
     async def report(
-        self, tool: str, arguments: dict[str, Any], result: Any, error: str | None
+        self,
+        tool: str,
+        arguments: dict[str, Any],
+        result: Any,
+        error: str | None,
+        *,
+        wait: bool = True,
     ) -> None:
         return None
 

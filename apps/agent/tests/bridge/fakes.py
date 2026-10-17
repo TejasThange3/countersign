@@ -97,7 +97,7 @@ class FakeArmorIQSession:
         self.closed = False
 
     def start_plan(self, tool_calls: list[dict[str, Any]], goal: str | None = None) -> Any:
-        if self.log.fail_plan:
+        if self.log.fail_plan or self.log.fail_plan_for == self.user_email:
             raise RuntimeError("fake: plan capture failed")
         self.log.plans.append((self.user_email, [c["name"] for c in tool_calls], goal))
         return FakeIntentToken(f"plan-{len(self.log.plans)}")
@@ -132,6 +132,7 @@ class FakeArmorIQLog:
         self.reports: list[tuple[str, str | None]] = []
         self.reported_by: list[tuple[str, str]] = []
         self.fail_plan = False
+        self.fail_plan_for: str | None = None  # only this identity's plans fail
         self.fail_close = False
         self.check_seconds = 0.0
 

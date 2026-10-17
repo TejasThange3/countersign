@@ -249,6 +249,77 @@ def settings(**overrides: object) -> BridgeSettings:
     return BridgeSettings(_env_file=None, **(base | overrides))  # type: ignore[arg-type,call-arg]
 
 
+async def test_factory_gives_each_identity_its_own_armoriq_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The SDK keeps the acting user on the client; one client per identity is what lets
+    plans for different identities mint in parallel without borrowing each other's user."""
+    import countersign_agent.bridge.gateway_factory as gf
+
+    built: list[object] = []
+
+    def fake_build(_settings: BridgeSettings) -> object:
+        built.append(object())
+        return built[-1]
+
+    opened: list[tuple[object, str]] = []
+
+    class Session:
+        def start_plan(self, tool_calls: object, goal: str | None = None) -> None:
+            return None
+
+        def close(self) -> None:
+            return None
+
+    def fake_session(client: object, _settings: BridgeSettings, email: str) -> Session:
+        opened.append((client, email))
+        return Session()
+
+    monkeypatch.setattr(gf, "build_client", fake_build)
+    monkeypatch.setattr(gf, "start_user_session", fake_session)
+    factory = GovernedGatewayFactory(settings(), executor_factory=_unused_mcp)
+    enforcer = await factory._armoriq_enforcer(["get_hotel_info"])
+    await enforcer.start(UNVERIFIED, "a", then_prepare=(GUEST, "b"))
+    await enforcer.start(GUEST, "c")
+    await enforcer.close()
+    clients = dict((email, client) for client, email in opened)
+    assert set(clients) == {UNVERIFIED, GUEST}
+    assert clients[UNVERIFIED] is not clients[GUEST]
+    assert len(built) == 2
+
+
+async def test_a_standby_for_another_identity_is_closed_not_used() -> None:
+    opened: list[tuple[str, FakeSlowSession]] = []
+    gate = threading.Event()
+    gate.set()
+
+    def session(email: str) -> FakeSlowSession:
+        opened.append((email, FakeSlowSession(gate)))
+        return opened[-1][1]
+
+    enforcer = ArmorIQEnforcer(
+        session_factory=session,  # type: ignore[arg-type]
+        approvals=FakeApprovals(),
+        tool_names=["get_hotel_info"],
+        poll_seconds=0.01,
+        plan_executor=None,
+    )
+    await enforcer.start(UNVERIFIED, "a", then_prepare=(GUEST, "b"))
+    await enforcer.start("someone.else@example.org", "c")
+    standby = next(s for email, s in opened if email == GUEST)
+    for _ in range(200):
+        if standby.closed:
+            break
+        await asyncio.sleep(0.01)
+    assert standby.closed
+    assert [email for email, _ in opened].count(GUEST) == 1
+    await enforcer.close()
+
+
+async def _unused_mcp() -> FakeMCP:
+    return FakeMCP()
+
+
 async def test_factory_disabled_mode_builds_a_baseline_gateway() -> None:
     mcp = FakeMCP()
 

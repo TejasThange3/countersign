@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from collections.abc import Callable
 
 import pytest
 from armoriq_sdk.exceptions import DelegationException
@@ -33,6 +34,15 @@ BIG_REFUND = {"booking_id": 1, "amount": 250, "reason": "noisy room"}
 VERIFY = {"booking_ref": "LRK-1001", "last_name": "Okafor"}
 
 
+async def eventually(condition: Callable[[], bool]) -> bool:
+    """Sessions are closed in the background, off the caller's path."""
+    for _ in range(200):
+        if condition():
+            return True
+        await asyncio.sleep(0.01)
+    return condition()
+
+
 async def verified(h: Harness) -> GovernedGateway:
     gw = await h.open()
     result = await gw.call("verify_guest", VERIFY)
@@ -56,21 +66,39 @@ async def test_specs_hide_guest_id_but_keep_target_guest_id() -> None:
 # --- plan and identity ---
 
 
-async def test_call_opens_one_unverified_session_declaring_every_tool() -> None:
+async def test_call_opens_an_unverified_plan_declaring_every_tool() -> None:
     h = Harness()
     gw = await h.open()
-    assert len(h.log.plans) == 1
     user, tools, goal = h.log.plans[0]
     assert user == UNVERIFIED
     assert set(tools) == {s.name for s in gw.tool_specs()}
     assert goal is not None and "call-1" in goal
 
 
+async def test_the_guest_plan_is_minted_ahead_but_unused_until_verified() -> None:
+    h = Harness()
+    gw = await h.open()
+    assert await eventually(lambda: [p[0] for p in h.log.plans] == [UNVERIFIED, GUEST])
+    await gw.call("get_hotel_info", {})
+    assert h.log.checks[-1][0] == UNVERIFIED  # the standby grants nothing
+    await gw.call("verify_guest", VERIFY)
+    assert len(h.log.plans) == 2  # verify switches to it instead of minting a new one
+    await gw.call("get_hotel_info", {})
+    assert h.log.checks[-1][0] == GUEST
+
+
+async def test_hanging_up_unverified_closes_the_unused_guest_session() -> None:
+    h = Harness()
+    gw = await h.open()
+    await gw.close()
+    assert await eventually(lambda: len(h.sessions) == 2 and all(s.closed for s in h.sessions))
+
+
 async def test_verify_switches_identity_and_replans_once() -> None:
     h = Harness()
     gw = await verified(h)
     assert [p[0] for p in h.log.plans] == [UNVERIFIED, GUEST]
-    assert h.sessions[0].closed  # the unverified session is retired
+    assert await eventually(lambda: h.sessions[0].closed)  # the unverified session is retired
     # verify_guest itself went through ArmorIQ, as the unverified identity.
     assert h.log.checks[0][:2] == (UNVERIFIED, "verify_guest")
     changed = [e for e in h.events if e.kind == "identity_changed"]
@@ -94,8 +122,9 @@ async def test_failed_verify_keeps_caller_unverified() -> None:
     gw = await h.open()
     result = await gw.call("verify_guest", VERIFY)
     assert result.outcome is Outcome.RAN
-    assert len(h.log.plans) == 1
     assert "identity_changed" not in h.kinds()
+    await gw.call("get_hotel_info", {})
+    assert h.log.checks[-1][0] == UNVERIFIED
 
 
 async def test_verify_lockout_after_max_failures_never_reaches_mcp_or_armoriq() -> None:
@@ -298,13 +327,14 @@ async def test_failed_plan_makes_every_call_unavailable() -> None:
 
 async def test_failed_replan_after_verify_fails_closed() -> None:
     h = Harness()
+    h.log.fail_plan_for = GUEST
     gw = await h.open()
-    h.log.fail_plan = True
     await gw.call("verify_guest", VERIFY)
     result = await gw.call("issue_refund", REFUND)
     assert result.decision is Decision.UNAVAILABLE
     assert ("issue_refund", {**REFUND, "guest_id": GUEST_ID}) not in h.mcp.calls
-    assert all(s.closed for s in h.sessions)  # the half-built guest session is not leaked
+    # The half-built guest session is not leaked.
+    assert await eventually(lambda: all(s.closed for s in h.sessions))
 
 
 async def test_failed_session_close_does_not_break_the_replan() -> None:
@@ -466,7 +496,7 @@ async def test_verify_while_a_hold_is_pending_does_not_replan() -> None:
     assert held.outcome is Outcome.PENDING
     result = await gw.call("verify_guest", VERIFY)
     assert result.reason == "hold_pending"
-    assert len(h.log.plans) == 1
+    assert "identity_changed" not in h.kinds()
     assert all(c[0] != "verify_guest" for c in h.mcp.calls)
 
 
@@ -554,7 +584,7 @@ async def test_close_closes_mcp_and_session() -> None:
     h = Harness()
     gw = await h.open()
     await gw.close()
-    assert h.mcp.closed and h.sessions[-1].closed
+    assert h.mcp.closed and await eventually(lambda: all(s.closed for s in h.sessions))
 
 
 async def test_verify_during_a_slow_hold_publication_still_sees_the_hold() -> None:
@@ -585,7 +615,7 @@ async def test_verify_during_a_slow_hold_publication_still_sees_the_hold() -> No
     held, verify = await held_task, await verify_task
     assert held.outcome is Outcome.PENDING
     assert verify.reason == "hold_pending"
-    assert len(h.log.plans) == 1
+    assert "identity_changed" not in h.kinds()
 
 
 async def test_a_run_in_flight_is_reported_through_the_session_that_allowed_it() -> None:
