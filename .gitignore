@@ -45,3 +45,6 @@ debug-recordings/
 
 # Local copies of the console screenshots (committed versions live in apps/dashboard/public/proof)
 Proof ss/
+
+# Raw demo-video footage and voiceover (personal voice recordings: never committed)
+video-raw/
