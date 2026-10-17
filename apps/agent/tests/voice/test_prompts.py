@@ -20,7 +20,7 @@ def test_prompt_requires_an_explicit_request_before_acting() -> None:
     # Live (demo recording, Oct 17): after an availability answer, a caller giving their
     # booking reference got a new booking they never asked for.
     assert "Checking availability is not a request to book" in text
-    assert "\"yes\" or \"sure\" is never a room" in text
+    assert '"yes" or "sure" is never a room' in text
 
 
 def test_prompt_forbids_claiming_actions_no_tool_performed() -> None:
