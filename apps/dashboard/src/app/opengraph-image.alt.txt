@@ -1,0 +1,1 @@
+Countersign: a voice agent that can't be talked into anything. Every action is checked by ArmorIQ before it runs.
